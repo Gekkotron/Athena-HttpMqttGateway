@@ -15,8 +15,17 @@ import argparse
 import os
 import sys
 
-from . import config
-from .key_manager import _parse_scope, _parse_secrets_file  # reuse parsers
+# Support both `python -m server.add_secret` (package context set) and
+# `python server/add_secret.py` (bare-script invocation): if we were not
+# imported as part of a package, put the project root on sys.path so the
+# absolute imports below resolve.
+if __package__ in (None, ""):
+    sys.path.insert(
+        0, os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    )
+
+from server import config
+from server.key_manager import _parse_scope, _parse_secrets_file  # reuse parsers
 
 
 def _validate_scope(scope: str) -> str:
