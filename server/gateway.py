@@ -2,6 +2,7 @@
 import base64
 import json
 import time
+from urllib.parse import urlparse
 from flask import request, Response
 
 from .crypto import CryptoManager, NoKeyMatched
@@ -10,8 +11,23 @@ from .services.http_service import HttpService
 from . import config
 
 
+def _extract_target_host(payload: dict):
+    """Return the target hostname/IP the payload will forward to, or None."""
+    url = payload.get("url")
+    if url:
+        return urlparse(url).hostname
+    host = payload.get("host")
+    if not host:
+        return None
+    parsed = urlparse(host)
+    if parsed.hostname:
+        return parsed.hostname
+    # No scheme in `host` (e.g. "192.168.1.50:8080") -- force authority parsing.
+    return urlparse("//" + host).hostname
+
+
 class GatewayHandler:
-    """Handles /gateway requests: decrypt, port-check, forward, encrypt."""
+    """Handles /gateway requests: decrypt, port-check, destination-check, forward, encrypt."""
 
     def __init__(self, crypto_manager: CryptoManager):
         self.crypto = crypto_manager
@@ -27,7 +43,7 @@ class GatewayHandler:
         try:
             payload, secret = self.crypto.decrypt(encrypted_request)
         except NoKeyMatched:
-            # No configured secret matched — no way to encrypt a reply the
+            # No configured secret matched -- no way to encrypt a reply the
             # caller could read, so refuse in plaintext.
             return Response("", status=401)
         except Exception:
@@ -40,6 +56,13 @@ class GatewayHandler:
 
         if not self._validate_timestamp(payload.get("timestamp")):
             return self._encrypted_error_response(secret, 403, "Request expired")
+
+        if secret.allowed_destinations is not None:
+            host = _extract_target_host(payload)
+            if not host or not secret.allows_destination(host):
+                return self._encrypted_error_response(
+                    secret, 403, "destination not allowed for this secret"
+                )
 
         try:
             response = self.http_service.handle_request(payload, secret)

@@ -62,6 +62,14 @@ def create_app() -> Flask:
         if timestamp is None or abs(time.time() - timestamp) > config.MAX_AGE_SECONDS:
             return _encrypted_error(crypto_manager, secret, 403, "Request expired")
 
+        if secret.allowed_destinations is not None:
+            broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
+            if not secret.allows_destination(broker_host):
+                return _encrypted_error(
+                    crypto_manager, secret, 403,
+                    "destination not allowed for this secret",
+                )
+
         try:
             response = mqtt_service.handle_request(payload, secret)
         except Exception as e:
@@ -84,10 +92,18 @@ def create_app() -> Flask:
             return {"error": str(e)}, 400
 
         if not secret.allows(config.MQTT_PORT):
-            # SSE stream not started — return an encrypted-error single frame
-            # via the /mqtt/publish-style response so clients that share the
-            # decrypt path can read it. Send it as the SSE body's first event.
+            # SSE stream not started -- return an encrypted-error frame via
+            # the /mqtt/publish-style response so clients sharing the decrypt
+            # path can read it.
             return _encrypted_error(crypto_manager, secret, 403, "port not allowed for this secret")
+
+        if secret.allowed_destinations is not None:
+            broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
+            if not secret.allows_destination(broker_host):
+                return _encrypted_error(
+                    crypto_manager, secret, 403,
+                    "destination not allowed for this secret",
+                )
 
         def generate():
             return mqtt_sse_service.subscribe_stream(payload, secret)

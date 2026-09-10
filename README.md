@@ -110,10 +110,27 @@ families the secret may reach:
 
 Scope syntax:
 
-- `*` — full access to every port (this is what auto-generation writes).
+- `*` — full access to every port and destination (auto-generation writes this).
 - Comma-separated port list — e.g. `80` (HTTP only), `80,1883` (both).
+- Optional `@<destinations>` suffix restricts what target host each key
+  may reach. Destinations are a comma-separated list of **IPs or CIDR
+  ranges** (hostnames are rejected at parse time to keep the check
+  DNS-independent):
+  - `80@192.168.1.50` — HTTP forwarding, only to that IP.
+  - `1883@192.168.1.0/24` — MQTT broker must be inside the /24.
+  - `*@192.168.1.0/24` — full port access, LAN only.
+  - Missing `@…` (or `@*`) means any destination.
 - **No colon at all** — a bare hex line is treated as `*`, so legacy
   single-key files keep working unchanged.
+
+Destination enforcement:
+
+- `/gateway` extracts the target host from the payload's `url` (via
+  `urlparse`) or `host` field.
+- `/mqtt/publish` and `/mqtt/subscribe` use `broker_host` from the
+  payload, or `MQTT_BROKER_HOST` from config if the client omits it.
+- The client-sent value must parse as an IP; a hostname sent to an
+  IP-scoped secret is refused with an encrypted 403.
 
 Blank lines and `#` comments are ignored. Example:
 
@@ -124,8 +141,11 @@ Blank lines and `#` comments are ignored. Example:
 # HTTP-only key you can hand to a web-only service.
 9d3a0e5cb1f0f5a5e3d4c1b6a7089d1e2f3a4b5c6d7e8f90112233445566778899:80
 
-# MQTT-only key for a device.
-aabb00112233445566778899aabbccddeeff00112233445566778899aabbccdd:1883
+# MQTT-only key for a device, LAN broker only.
+aabb00112233445566778899aabbccddeeff00112233445566778899aabbccdd:1883@192.168.1.91
+
+# Full access, but LAN only.
+1122334455667788112233445566778811223344556677881122334455667788:*@192.168.1.0/24
 ```
 
 The gateway trial-decrypts each incoming request against every configured
@@ -147,8 +167,14 @@ python -m server.add_secret --scope 80
 # MQTT-only key with a label above it
 python -m server.add_secret --scope 1883 --comment "device: living-room"
 
-# Full-access key at a custom file location
-python -m server.add_secret --scope '*' --key-file data/secret_key.txt
+# HTTP-only key locked to one target IP
+python -m server.add_secret --scope 80 --dest 192.168.1.50
+
+# Full-access key restricted to the LAN
+python -m server.add_secret --scope '*' --dest 192.168.1.0/24
+
+# Embedded destination form is also accepted
+python -m server.add_secret --scope '80@192.168.1.50'
 ```
 
 The tool prints the new hex secret so you can copy it into a client.
