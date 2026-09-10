@@ -2,7 +2,7 @@
 import os
 
 
-SECRET_KEY_FILE = os.getenv("SECRET_KEY_FILE", "server/secret_key.txt")
+SECRET_KEY_FILE = os.getenv("SECRET_KEY_FILE", "data/secret_key.txt")
 MAX_AGE_SECONDS = int(os.getenv("MAX_AGE_SECONDS", "60"))
 HOST = os.getenv("HOST", "0.0.0.0")
 PORT = int(os.getenv("PORT", "10000"))

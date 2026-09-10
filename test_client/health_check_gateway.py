@@ -136,8 +136,14 @@ def restart(verbose: bool = True) -> tuple[bool, str]:
 
 
 def _load_secret_key(path: str) -> bytes:
+    """Return the first usable hex secret from a line-based secret file."""
     with open(path, "r", encoding="utf-8") as f:
-        return bytes.fromhex(f.read().strip())
+        for raw in f:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            return bytes.fromhex(line.split(":", 1)[0].strip())
+    raise ValueError(f"No secret found in {path}")
 
 
 # Order matters: Docker layout (bind-mounted `./data:/app/data`) first,

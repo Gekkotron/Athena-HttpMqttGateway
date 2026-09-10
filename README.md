@@ -168,7 +168,7 @@ cp .env.example .env
 
 | Variable | Default | Description |
 |----------|---------|-------------|
-| `SECRET_KEY_FILE` | `server/secret_key.txt` | Path to the secret key file |
+| `SECRET_KEY_FILE` | `data/secret_key.txt` | Path to the secret key file |
 | `MAX_AGE_SECONDS` | `60` | Maximum age for request timestamps (replay protection) |
 | `HOST` | `0.0.0.0` | Server bind address |
 | `PORT` | `10000` | Server port |
@@ -192,8 +192,9 @@ The project includes ready-to-use Python client classes for HTTP and MQTT:
 from test_client.client_http_test import EncryptedClient
 
 # Load secret key from file
-with open('server/secret_key.txt', 'r') as f:
-    SECRET_KEY = f.read().strip()
+with open('data/secret_key.txt', 'r') as f:
+    # Line-based file: each entry is `<hex>[:<scope>]` -- take the hex part.
+    SECRET_KEY = f.readline().strip().split(':', 1)[0]
 
 # Initialize client
 client = EncryptedClient(
@@ -221,8 +222,9 @@ Use the gateway to communicate with a Jeedom home automation server via its JSON
 from test_client.client_http_test import EncryptedHttpClient
 
 # Load secret key
-with open('server/secret_key.txt', 'r') as f:
-    SECRET_KEY = f.read().strip()
+with open('data/secret_key.txt', 'r') as f:
+    # Line-based file: each entry is `<hex>[:<scope>]` -- take the hex part.
+    SECRET_KEY = f.readline().strip().split(':', 1)[0]
 
 client = EncryptedHttpClient(
     gateway_url="https://yourdevice.tail497f.ts.net",

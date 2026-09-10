@@ -73,10 +73,19 @@ class EncryptedHttpClient:
         return self.decrypt(encrypted_response)
 
 
-def load_secret_key(path: str = "server/secret_key.txt") -> str:
-    """Load secret key from file."""
+def load_secret_key(path: str = "data/secret_key.txt") -> str:
+    """Load the first usable hex secret from a line-based secret file.
+
+    Accepts `<hex>` (legacy) and `<hex>:<scope>` (multi-secret) lines and
+    skips blank/comment lines.
+    """
     with open(path, "r", encoding="utf-8") as f:
-        return f.read().strip()
+        for raw in f:
+            line = raw.split("#", 1)[0].strip()
+            if not line:
+                continue
+            return line.split(":", 1)[0].strip()
+    raise ValueError(f"No secret found in {path}")
 
 
 def main():
@@ -84,9 +93,9 @@ def main():
 
     try:
         SECRET_KEY = load_secret_key()
-        print("Loaded secret key from server/secret_key.txt")
+        print("Loaded secret key from data/secret_key.txt")
     except FileNotFoundError:
-        print("Error: server/secret_key.txt not found! Run the server first.")
+        print("Error: data/secret_key.txt not found! Run the server first.")
         return
 
     GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:10000")

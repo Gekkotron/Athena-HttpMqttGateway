@@ -6,8 +6,18 @@ import os
 from cryptography.hazmat.primitives.ciphers.aead import AESGCM
 
 def load_secret_key(secret_key_file):
+    """Return the first usable hex secret from a line-based secret file.
+
+    Accepts `<hex>` (legacy) and `<hex>:<scope>` (multi-secret) lines and
+    skips blank/comment lines.
+    """
     with open(secret_key_file, 'r', encoding='utf-8') as f:
-        return f.read().strip()
+        for raw in f:
+            line = raw.split('#', 1)[0].strip()
+            if not line:
+                continue
+            return line.split(':', 1)[0].strip()
+    raise ValueError(f"No secret found in {secret_key_file}")
 
 class EncryptedClient:
     def __init__(self, gateway_url: str, secret_key: str):
@@ -77,7 +87,7 @@ class EncryptedClient:
         return decrypted_response
 
 def main():
-    secret_key_file = "server/secret_key.txt"
+    secret_key_file = "data/secret_key.txt"
     try:
         SECRET_KEY = load_secret_key(secret_key_file)
         print(f"Loaded secret key from {secret_key_file}")
