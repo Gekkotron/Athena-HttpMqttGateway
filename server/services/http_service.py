@@ -4,6 +4,7 @@ import logging
 import requests
 
 from ..crypto import CryptoManager
+from ..key_manager import Secret
 
 logger = logging.getLogger(__name__)
 
@@ -20,7 +21,7 @@ class HttpService:
         """
         self.crypto = crypto_manager
 
-    def handle_request(self, payload: dict) -> bytes:
+    def handle_request(self, payload: dict, secret: Secret) -> bytes:
         """
         Forward HTTP request to the specified URL.
 
@@ -111,4 +112,4 @@ class HttpService:
         }
 
         logger.info("Request handled successfully, returning encrypted response")
-        return self.crypto.encrypt(response_payload)
+        return self.crypto.encrypt(response_payload, secret)

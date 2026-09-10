@@ -1,47 +1,43 @@
-"""Encryption and decryption utilities using AES-GCM."""
+"""Encryption and decryption utilities using AES-GCM with multi-secret support."""
 import json
 import os
-from cryptography.hazmat.primitives.ciphers.aead import AESGCM
+from typing import Tuple
+
+from cryptography.exceptions import InvalidTag
+
+from .key_manager import Secret
+
+
+class NoKeyMatched(Exception):
+    """Raised when no configured secret can decrypt a payload."""
 
 
 class CryptoManager:
-    """Manages encryption and decryption operations."""
-    
-    def __init__(self, secret_key: bytes):
-        """
-        Initialize crypto manager with a secret key.
-        
-        Args:
-            secret_key: 32-byte secret key for AES-GCM encryption
-        """
-        self.secret_key = secret_key
-        self.aesgcm = AESGCM(secret_key)
-    
-    def encrypt(self, data: dict) -> bytes:
-        """
-        Encrypt dictionary data using AES-GCM.
-        
-        Args:
-            data: Dictionary to encrypt
-            
-        Returns:
-            Encrypted data as bytes (nonce + ciphertext)
-        """
-        nonce = os.urandom(12)
-        plaintext = json.dumps(data).encode()
-        ciphertext = self.aesgcm.encrypt(nonce, plaintext, None)
-        return nonce + ciphertext
-    
-    def decrypt(self, data: bytes) -> dict:
-        """
-        Decrypt AES-GCM encrypted data.
-        
-        Args:
-            data: Encrypted data (nonce + ciphertext)
-            
-        Returns:
-            Decrypted data as dictionary
+    """Manages AES-GCM encryption across one or more configured secrets."""
+
+    def __init__(self, secrets: list):
+        if not secrets:
+            raise ValueError("At least one Secret is required.")
+        self.secrets = list(secrets)
+
+    def decrypt(self, data: bytes) -> Tuple[dict, Secret]:
+        """Trial-decrypt with each secret; return (payload, matched Secret).
+
+        Raises:
+            NoKeyMatched: no configured secret authenticated the ciphertext.
         """
         nonce, ciphertext = data[:12], data[12:]
-        plaintext = self.aesgcm.decrypt(nonce, ciphertext, None)
-        return json.loads(plaintext)
+        for secret in self.secrets:
+            try:
+                plaintext = secret.aesgcm.decrypt(nonce, ciphertext, None)
+            except InvalidTag:
+                continue
+            return json.loads(plaintext), secret
+        raise NoKeyMatched("No configured secret could decrypt the payload.")
+
+    def encrypt(self, data: dict, secret: Secret) -> bytes:
+        """Encrypt ``data`` under ``secret``. Caller must supply the matched Secret."""
+        nonce = os.urandom(12)
+        plaintext = json.dumps(data).encode()
+        ciphertext = secret.aesgcm.encrypt(nonce, plaintext, None)
+        return nonce + ciphertext

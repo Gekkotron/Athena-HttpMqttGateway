@@ -81,7 +81,7 @@ python -m server
 
 ### Secret Key Setup
 
-On first launch, the server automatically generates a 256-bit AES secret key and displays it:
+On first launch, the server automatically generates a 256-bit AES secret key with full access (scope `*`) and displays it:
 
 ```
 ================================================================================
@@ -89,12 +89,71 @@ NEW SECRET KEY GENERATED!
 ================================================================================
 Secret key: 3616864d6ed4f70b8a774e17c7435b411d8bc5714fddaf88e3850104a9d88ccd
 Saved to: secret_key.txt
+Scope: * (full access to every port)
 ================================================================================
 Please update your client with this secret key.
 ================================================================================
 ```
 
 **Important**: Save this key securely and configure your clients with it.
+
+#### Multiple secrets with per-endpoint scopes
+
+`secret_key.txt` is a **line-based** list of secrets. Each line is
+`<64-hex-chars>[:<scope>]`, where the scope selects which endpoint
+families the secret may reach:
+
+| Port | Endpoints it unlocks             |
+|------|----------------------------------|
+| `80` | `/gateway` (HTTP forwarding)     |
+| `1883` | `/mqtt/publish`, `/mqtt/subscribe` |
+
+Scope syntax:
+
+- `*` — full access to every port (this is what auto-generation writes).
+- Comma-separated port list — e.g. `80` (HTTP only), `80,1883` (both).
+- **No colon at all** — a bare hex line is treated as `*`, so legacy
+  single-key files keep working unchanged.
+
+Blank lines and `#` comments are ignored. Example:
+
+```
+# Full-access key for your admin client (auto-generated).
+3616864d6ed4f70b8a774e17c7435b411d8bc5714fddaf88e3850104a9d88ccd:*
+
+# HTTP-only key you can hand to a web-only service.
+9d3a0e5cb1f0f5a5e3d4c1b6a7089d1e2f3a4b5c6d7e8f90112233445566778899:80
+
+# MQTT-only key for a device.
+aabb00112233445566778899aabbccddeeff00112233445566778899aabbccdd:1883
+```
+
+The gateway trial-decrypts each incoming request against every configured
+key. On a match, it enforces the key's scope against the endpoint being
+called. Requests whose ciphertext no key can authenticate are rejected
+with an **unencrypted HTTP 401** (the server cannot encrypt a response
+without knowing which key the client holds).
+
+#### Adding a new scoped secret
+
+`python -m server.add_secret` generates a fresh random 256-bit key and
+appends it to the secret-key file. Use it to hand out keys per service
+without editing the file by hand:
+
+```bash
+# HTTP-only key
+python -m server.add_secret --scope 80
+
+# MQTT-only key with a label above it
+python -m server.add_secret --scope 1883 --comment "device: living-room"
+
+# Full-access key at a custom file location
+python -m server.add_secret --scope '*' --key-file data/secret_key.txt
+```
+
+The tool prints the new hex secret so you can copy it into a client.
+Existing keys are left untouched; the file is validated before the append
+so a corrupted line stops the tool before it writes anything.
 
 ## Configuration
 

@@ -4,22 +4,23 @@ import time
 import paho.mqtt.client as mqtt
 
 from ..crypto import CryptoManager
+from ..key_manager import Secret
 from .. import config
 
 
 class MQTTService:
     """Handles MQTT publish requests."""
-    
+
     def __init__(self, crypto_manager: CryptoManager):
         """
         Initialize MQTT service handler.
-        
+
         Args:
             crypto_manager: CryptoManager instance for encryption operations
         """
         self.crypto = crypto_manager
-    
-    def handle_request(self, payload: dict) -> bytes:
+
+    def handle_request(self, payload: dict, secret: Secret) -> bytes:
         """
         Publish message to MQTT broker.
         
@@ -82,4 +83,4 @@ class MQTTService:
                 "timestamp": int(time.time())
             }
         
-        return self.crypto.encrypt(response_payload)
+        return self.crypto.encrypt(response_payload, secret)

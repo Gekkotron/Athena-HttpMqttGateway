@@ -3,82 +3,62 @@ import base64
 import json
 import time
 from flask import request, Response
-from typing import Tuple
 
-from .crypto import CryptoManager
+from .crypto import CryptoManager, NoKeyMatched
+from .key_manager import Secret
 from .services.http_service import HttpService
 from . import config
 
 
 class GatewayHandler:
-    """Handles gateway requests with encryption/decryption for HTTP."""
+    """Handles /gateway requests: decrypt, port-check, forward, encrypt."""
 
     def __init__(self, crypto_manager: CryptoManager):
-        """
-        Initialize gateway handler.
-
-        Args:
-            crypto_manager: CryptoManager instance for encryption operations
-        """
         self.crypto = crypto_manager
         self.http_service = HttpService(crypto_manager)
 
-    def handle_request(self) -> Tuple[bytes, int]:
-        """
-        Handle encrypted gateway request for HTTP.
-
-        Returns:
-            Tuple of (encrypted response, status code)
-        """
+    def handle_request(self):
+        """Handle an encrypted gateway request for HTTP forwarding."""
         try:
-            # Decrypt request
             encrypted_request = base64.b64decode(request.data)
-            payload = self.crypto.decrypt(encrypted_request)
+        except Exception:
+            return Response("", status=400)
 
-            # Validate timestamp
-            if not self._validate_timestamp(payload.get("timestamp")):
-                return self._encrypt_error("Request expired"), 200
+        try:
+            payload, secret = self.crypto.decrypt(encrypted_request)
+        except NoKeyMatched:
+            # No configured secret matched — no way to encrypt a reply the
+            # caller could read, so refuse in plaintext.
+            return Response("", status=401)
+        except Exception:
+            return Response("", status=400)
 
-            # Forward to HTTP service
-            response = self.http_service.handle_request(payload)
-
-            # Encrypt and return response
-            encrypted_response = base64.b64encode(response)
-            return Response(
-                encrypted_response,
-                mimetype="application/octet-stream"
+        if not secret.allows(config.HTTP_PORT):
+            return self._encrypted_error_response(
+                secret, 403, "port not allowed for this secret"
             )
 
+        if not self._validate_timestamp(payload.get("timestamp")):
+            return self._encrypted_error_response(secret, 403, "Request expired")
+
+        try:
+            response = self.http_service.handle_request(payload, secret)
         except Exception as e:
-            return self._encrypt_error(str(e)), 200
+            return self._encrypted_error_response(secret, 500, str(e))
 
-    def _validate_timestamp(self, timestamp: int) -> bool:
-        """
-        Validate request timestamp to prevent replay attacks.
+        encrypted_response = base64.b64encode(response)
+        return Response(encrypted_response, mimetype="application/octet-stream")
 
-        Args:
-            timestamp: Request timestamp in seconds
-
-        Returns:
-            True if timestamp is valid, False otherwise
-        """
+    def _validate_timestamp(self, timestamp) -> bool:
         if timestamp is None:
             return False
         return abs(time.time() - timestamp) <= config.MAX_AGE_SECONDS
-    
-    def _encrypt_error(self, message: str) -> bytes:
-        """
-        Create encrypted error response.
-        
-        Args:
-            message: Error message
-            
-        Returns:
-            Encrypted error response
-        """
+
+    def _encrypted_error_response(self, secret: Secret, status: int, message: str) -> Response:
         error_payload = {
-            "status": 403,
+            "status": status,
             "body": json.dumps({"error": message}),
-            "timestamp": int(time.time())
+            "timestamp": int(time.time()),
         }
-        return base64.b64encode(self.crypto.encrypt(error_payload))
+        encrypted = base64.b64encode(self.crypto.encrypt(error_payload, secret))
+        return Response(encrypted, mimetype="application/octet-stream")

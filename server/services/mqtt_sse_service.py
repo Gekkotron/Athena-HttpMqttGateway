@@ -7,6 +7,7 @@ from typing import Generator
 import paho.mqtt.client as mqtt
 
 from ..crypto import CryptoManager
+from ..key_manager import Secret
 from .. import config
 
 
@@ -22,7 +23,7 @@ class MQTTSSEService:
         """
         self.crypto = crypto_manager
 
-    def subscribe_stream(self, payload: dict) -> Generator[str, None, None]:
+    def subscribe_stream(self, payload: dict, secret: Secret) -> Generator[str, None, None]:
         """
         Subscribe to MQTT topic and stream messages via SSE.
 
@@ -44,7 +45,7 @@ class MQTTSSEService:
         qos = payload.get("qos", 0)
 
         if not topic:
-            yield self._format_sse_error("Missing required field: topic")
+            yield self._format_sse_error("Missing required field: topic", secret)
             return
 
         # Create MQTT client
@@ -119,7 +120,7 @@ class MQTTSSEService:
                     msg = message_queue.get(timeout=1)
 
                     # Encrypt the message
-                    encrypted_msg = self._encrypt_message(msg)
+                    encrypted_msg = self._encrypt_message(msg, secret)
 
                     # Format as SSE
                     yield f"data: {encrypted_msg}\n\n"
@@ -137,40 +138,24 @@ class MQTTSSEService:
                     continue
 
         except Exception as e:
-            yield self._format_sse_error(f"MQTT connection error: {str(e)}")
+            yield self._format_sse_error(f"MQTT connection error: {str(e)}", secret)
         finally:
             # Clean up
             client.loop_stop()
             client.disconnect()
 
-    def _encrypt_message(self, message: dict) -> str:
-        """
-        Encrypt message data.
-
-        Args:
-            message: Message dictionary to encrypt
-
-        Returns:
-            Base64 encoded encrypted message
-        """
+    def _encrypt_message(self, message: dict, secret: Secret) -> str:
+        """Encrypt ``message`` under the caller's matched secret."""
         import base64
-        encrypted_data = self.crypto.encrypt(message)
+        encrypted_data = self.crypto.encrypt(message, secret)
         return base64.b64encode(encrypted_data).decode("utf-8")
 
-    def _format_sse_error(self, error_message: str) -> str:
-        """
-        Format error message as SSE event.
-
-        Args:
-            error_message: Error message text
-
-        Returns:
-            SSE formatted error message
-        """
+    def _format_sse_error(self, error_message: str, secret: Secret) -> str:
+        """Format an SSE error frame encrypted under the caller's secret."""
         error_data = {
             "type": "error",
             "message": error_message,
             "timestamp": int(time.time())
         }
-        encrypted_error = self._encrypt_message(error_data)
+        encrypted_error = self._encrypt_message(error_data, secret)
         return f"data: {encrypted_error}\n\n"
