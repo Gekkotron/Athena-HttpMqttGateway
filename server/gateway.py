@@ -49,7 +49,7 @@ class GatewayHandler:
         except Exception:
             return Response("", status=400)
 
-        if not secret.allows(config.HTTP_PORT):
+        if not secret.allows_port(config.HTTP_PORT):
             return self._encrypted_error_response(
                 secret, 403, "port not allowed for this secret"
             )
@@ -57,12 +57,11 @@ class GatewayHandler:
         if not self._validate_timestamp(payload.get("timestamp")):
             return self._encrypted_error_response(secret, 403, "Request expired")
 
-        if secret.allowed_destinations is not None:
-            host = _extract_target_host(payload)
-            if not host or not secret.allows_destination(host):
-                return self._encrypted_error_response(
-                    secret, 403, "destination not allowed for this secret"
-                )
+        host = _extract_target_host(payload)
+        if not secret.permits(config.HTTP_PORT, host):
+            return self._encrypted_error_response(
+                secret, 403, "destination not allowed for this secret"
+            )
 
         try:
             response = self.http_service.handle_request(payload, secret)

@@ -55,20 +55,19 @@ def create_app() -> Flask:
         except Exception:
             return Response("", status=400)
 
-        if not secret.allows(config.MQTT_PORT):
+        if not secret.allows_port(config.MQTT_PORT):
             return _encrypted_error(crypto_manager, secret, 403, "port not allowed for this secret")
 
         timestamp = payload.get("timestamp")
         if timestamp is None or abs(time.time() - timestamp) > config.MAX_AGE_SECONDS:
             return _encrypted_error(crypto_manager, secret, 403, "Request expired")
 
-        if secret.allowed_destinations is not None:
-            broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
-            if not secret.allows_destination(broker_host):
-                return _encrypted_error(
-                    crypto_manager, secret, 403,
-                    "destination not allowed for this secret",
-                )
+        broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
+        if not secret.permits(config.MQTT_PORT, broker_host):
+            return _encrypted_error(
+                crypto_manager, secret, 403,
+                "destination not allowed for this secret",
+            )
 
         try:
             response = mqtt_service.handle_request(payload, secret)
@@ -97,13 +96,12 @@ def create_app() -> Flask:
             # path can read it.
             return _encrypted_error(crypto_manager, secret, 403, "port not allowed for this secret")
 
-        if secret.allowed_destinations is not None:
-            broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
-            if not secret.allows_destination(broker_host):
-                return _encrypted_error(
-                    crypto_manager, secret, 403,
-                    "destination not allowed for this secret",
-                )
+        broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
+        if not secret.permits(config.MQTT_PORT, broker_host):
+            return _encrypted_error(
+                crypto_manager, secret, 403,
+                "destination not allowed for this secret",
+            )
 
         def generate():
             return mqtt_sse_service.subscribe_stream(payload, secret)

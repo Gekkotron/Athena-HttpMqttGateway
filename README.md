@@ -141,11 +141,31 @@ Blank lines and `#` comments are ignored. Example:
 # HTTP-only key you can hand to a web-only service.
 9d3a0e5cb1f0f5a5e3d4c1b6a7089d1e2f3a4b5c6d7e8f90112233445566778899:80
 
+# Key that can do BOTH HTTP and MQTT (multiple ports, no destination filter).
+2222222222222222222222222222222222222222222222222222222222222222:80,1883
+
+# Same as above, but pinned to one target host (works for HTTP and MQTT
+# because it's the same host for both).
+3333333333333333333333333333333333333333333333333333333333333333:80,1883@192.168.1.91
+
+# Multiple destinations on one line -- port(s) may reach any of them.
+# Here: HTTP forwarding is allowed to two Jeedom boxes.
+4444444444444444444444444444444444444444444444444444444444444444:80@192.168.1.50,192.168.1.51
+
 # MQTT-only key for a device, LAN broker only.
 aabb00112233445566778899aabbccddeeff00112233445566778899aabbccdd:1883@192.168.1.91
 
 # Full access, but LAN only.
 1122334455667788112233445566778811223344556677881122334455667788:*@192.168.1.0/24
+
+# --- Per-port destination (different targets per port) ---
+# The single-line syntax "80,1883@ip1,ip2" allows BOTH ports to reach BOTH
+# ips. If you want port A -> host X and port B -> host Y under ONE key,
+# split them across two lines reusing the SAME hex key. Lines sharing a
+# key are merged into a single secret with multiple (ports, destinations)
+# rules; a request is permitted when ANY rule matches its (port, host).
+5555555555555555555555555555555555555555555555555555555555555555:80@192.168.1.50
+5555555555555555555555555555555555555555555555555555555555555555:1883@192.168.1.91
 ```
 
 The gateway trial-decrypts each incoming request against every configured
