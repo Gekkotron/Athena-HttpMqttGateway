@@ -7,6 +7,7 @@ from flask import request, Response
 
 from .crypto import CryptoManager, NoKeyMatched
 from .key_manager import Secret
+from .replay import ReplayGuard
 from .services.http_service import HttpService
 from . import config
 
@@ -29,8 +30,9 @@ def _extract_target_host(payload: dict):
 class GatewayHandler:
     """Handles /gateway requests: decrypt, port-check, destination-check, forward, encrypt."""
 
-    def __init__(self, crypto_manager: CryptoManager):
+    def __init__(self, crypto_manager: CryptoManager, replay_guard: ReplayGuard):
         self.crypto = crypto_manager
+        self.replay_guard = replay_guard
         self.http_service = HttpService(crypto_manager)
 
     def handle_request(self):
@@ -54,8 +56,11 @@ class GatewayHandler:
                 secret, 403, "port not allowed for this secret"
             )
 
-        if not self._validate_timestamp(payload.get("timestamp")):
-            return self._encrypted_error_response(secret, 403, "Request expired")
+        replay_error = self.replay_guard.check(
+            encrypted_request[:12], payload.get("timestamp")
+        )
+        if replay_error:
+            return self._encrypted_error_response(secret, 403, replay_error)
 
         host = _extract_target_host(payload)
         if not secret.permits(config.HTTP_PORT, host):
@@ -70,11 +75,6 @@ class GatewayHandler:
 
         encrypted_response = base64.b64encode(response)
         return Response(encrypted_response, mimetype="application/octet-stream")
-
-    def _validate_timestamp(self, timestamp) -> bool:
-        if timestamp is None:
-            return False
-        return abs(time.time() - timestamp) <= config.MAX_AGE_SECONDS
 
     def _encrypted_error_response(self, secret: Secret, status: int, message: str) -> Response:
         error_payload = {

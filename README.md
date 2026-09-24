@@ -695,18 +695,19 @@ Different endpoints require different fields (see API Endpoints section for deta
 
 Used with the `/mqtt/subscribe` endpoint for real-time subscriptions:
 
-- `topic`: MQTT topic to subscribe to (supports wildcards: `+` for single level, `#` for multi-level)
+- `topics`: List of MQTT topics to subscribe to on one stream (supports wildcards: `+` for single level, `#` for multi-level)
+- `topic`: Single MQTT topic (legacy form; may be combined with `topics`). At least one of `topic` / `topics` is required
 - `broker_host`: (Optional) MQTT broker hostname
 - `broker_port`: (Optional) MQTT broker port
 - `username`: (Optional) MQTT username
 - `password`: (Optional) MQTT password
-- `qos`: (Optional) Quality of Service (0-2)
-- `timestamp`: Current Unix timestamp
+- `qos`: (Optional) Quality of Service (0-2), applied to every topic
+- `timestamp`: Current Unix timestamp (required for replay protection)
 
 **Example Subscribe Payload:**
 ```json
 {
-    "topic": "home/sensors/#",
+    "topics": ["home/sensors/#", "home/lights/+/state"],
     "broker_host": "192.168.1.91",
     "broker_port": 1883,
     "qos": 1,
@@ -723,7 +724,8 @@ Each SSE event contains an encrypted payload with one of these message types:
 {
     "type": "connected",
     "topic": "home/sensors/#",
-    "message": "Successfully connected and subscribed to home/sensors/#"
+    "topics": ["home/sensors/#", "home/lights/+/state"],
+    "message": "Successfully connected and subscribed to home/sensors/#, home/lights/+/state"
 }
 ```
 
@@ -980,6 +982,8 @@ The gateway validates timestamps to prevent replay attacks:
 - Requests older than `MAX_AGE_SECONDS` are rejected
 - Future timestamps are also rejected
 - Default window: 60 seconds (configurable)
+- Each request's AES-GCM nonce is remembered for the length of the window, so an identical request replayed inside the window is rejected with `Request replayed`
+- Applies to all three encrypted endpoints: `/gateway`, `/mqtt/publish` and `/mqtt/subscribe`
 
 ### Best Practices
 

@@ -6,6 +6,7 @@ from flask import Flask, request, Response, stream_with_context
 from .crypto import CryptoManager, NoKeyMatched
 from .gateway import GatewayHandler
 from .key_manager import load_or_generate_secrets, Secret
+from .replay import ReplayGuard
 from .services.mqtt_service import MQTTService
 from .services.mqtt_sse_service import MQTTSSEService
 from . import config
@@ -29,7 +30,8 @@ def create_app() -> Flask:
     secrets = load_or_generate_secrets(config.SECRET_KEY_FILE)
 
     crypto_manager = CryptoManager(secrets)
-    gateway_handler = GatewayHandler(crypto_manager)
+    replay_guard = ReplayGuard(config.MAX_AGE_SECONDS)
+    gateway_handler = GatewayHandler(crypto_manager, replay_guard)
     mqtt_service = MQTTService(crypto_manager)
     mqtt_sse_service = MQTTSSEService(crypto_manager)
 
@@ -58,9 +60,9 @@ def create_app() -> Flask:
         if not secret.allows_port(config.MQTT_PORT):
             return _encrypted_error(crypto_manager, secret, 403, "port not allowed for this secret")
 
-        timestamp = payload.get("timestamp")
-        if timestamp is None or abs(time.time() - timestamp) > config.MAX_AGE_SECONDS:
-            return _encrypted_error(crypto_manager, secret, 403, "Request expired")
+        replay_error = replay_guard.check(encrypted_request[:12], payload.get("timestamp"))
+        if replay_error:
+            return _encrypted_error(crypto_manager, secret, 403, replay_error)
 
         broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
         if not secret.permits(config.MQTT_PORT, broker_host):
@@ -90,11 +92,15 @@ def create_app() -> Flask:
         except Exception as e:
             return {"error": str(e)}, 400
 
-        if not secret.allows(config.MQTT_PORT):
+        if not secret.allows_port(config.MQTT_PORT):
             # SSE stream not started -- return an encrypted-error frame via
             # the /mqtt/publish-style response so clients sharing the decrypt
             # path can read it.
             return _encrypted_error(crypto_manager, secret, 403, "port not allowed for this secret")
+
+        replay_error = replay_guard.check(encrypted_request[:12], payload.get("timestamp"))
+        if replay_error:
+            return _encrypted_error(crypto_manager, secret, 403, replay_error)
 
         broker_host = payload.get("broker_host") or config.MQTT_BROKER_HOST
         if not secret.permits(config.MQTT_PORT, broker_host):

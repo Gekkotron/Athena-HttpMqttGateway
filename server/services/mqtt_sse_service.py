@@ -11,6 +11,24 @@ from ..key_manager import Secret
 from .. import config
 
 
+def _requested_topics(payload: dict):
+    """Return the list of topics to subscribe to, or None if invalid.
+
+    Accepts ``topics`` (list of strings) and/or the legacy single ``topic``.
+    """
+    topics = payload.get("topics")
+    if topics is None:
+        topics = []
+    elif not isinstance(topics, list):
+        return None
+    topic = payload.get("topic")
+    if topic:
+        topics = [topic] + topics
+    if not topics or not all(isinstance(t, str) and t for t in topics):
+        return None
+    return list(dict.fromkeys(topics))  # dedupe, keep order
+
+
 class MQTTSSEService:
     """Handles MQTT subscription via Server-Sent Events."""
 
@@ -25,10 +43,10 @@ class MQTTSSEService:
 
     def subscribe_stream(self, payload: dict, secret: Secret) -> Generator[str, None, None]:
         """
-        Subscribe to MQTT topic and stream messages via SSE.
+        Subscribe to one or more MQTT topics and stream messages via SSE.
 
         Args:
-            payload: Decrypted request payload with topic and broker details
+            payload: Decrypted request payload with topic(s) and broker details
 
         Yields:
             SSE formatted messages with encrypted MQTT data
@@ -39,13 +57,15 @@ class MQTTSSEService:
         # Extract MQTT parameters
         broker_host = payload.get("broker_host", config.MQTT_BROKER_HOST)
         broker_port = payload.get("broker_port", config.MQTT_BROKER_PORT)
-        topic = payload.get("topic")
+        topics = _requested_topics(payload)
         username = payload.get("username")
         password = payload.get("password")
         qos = payload.get("qos", 0)
 
-        if not topic:
-            yield self._format_sse_error("Missing required field: topic", secret)
+        if topics is None:
+            yield self._format_sse_error(
+                "Missing or invalid field: topic / topics (non-empty strings)", secret
+            )
             return
 
         # Create MQTT client
@@ -54,11 +74,12 @@ class MQTTSSEService:
         # Set up callbacks
         def on_connect(client, userdata, flags, rc):
             if rc == 0:
-                client.subscribe(topic, qos=qos)
+                client.subscribe([(t, qos) for t in topics])
                 message_queue.put({
                     "type": "connected",
-                    "topic": topic,
-                    "message": f"Successfully connected and subscribed to {topic}"
+                    "topic": topics[0],
+                    "topics": topics,
+                    "message": f"Successfully connected and subscribed to {', '.join(topics)}"
                 })
             else:
                 message_queue.put({
