@@ -2,4 +2,5 @@ server/secret_key.txt
 .env
 .venv
 __pycache__/
-*.pyc
+*.pyccoverage.json
+.coverage

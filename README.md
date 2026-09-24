@@ -1,6 +1,7 @@
 # Athena-HttpMqttGateway
 
 [![CI](https://github.com/Gekkotron/Athena-HttpMqttGateway/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Gekkotron/Athena-HttpMqttGateway/actions/workflows/ci.yml)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/Gekkotron/Athena-HttpMqttGateway/badges/coverage.json)](https://github.com/Gekkotron/Athena-HttpMqttGateway/actions/workflows/ci.yml)
 
 An end-to-end encrypted gateway for HTTP APIs and MQTT communications, using AES-GCM. Ship home-automation traffic over the public internet through a single encrypted tunnel — no per-service certificates, no exposed brokers.
 
@@ -783,7 +784,7 @@ Offline tests (no broker, no network) run on every push via GitHub Actions:
 
 ```bash
 pip install -r requirements-dev.txt
-python -m pytest
+python -m pytest --cov=server --cov-report=term-missing
 ```
 
 ### Integration Test Clients

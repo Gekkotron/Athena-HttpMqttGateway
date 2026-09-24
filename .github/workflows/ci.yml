@@ -23,4 +23,44 @@ jobs:
           cache: pip
           cache-dependency-path: requirements*.txt
       - run: pip install -r requirements-dev.txt
-      - run: python -m pytest -v
+      - run: python -m pytest -v --cov=server --cov-report=term-missing --cov-report=json
+      - if: matrix.python-version == '3.11'
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage
+          path: coverage.json
+
+  # Publishes coverage.json (shields.io endpoint format) to the orphan
+  # `badges` branch; the README badge reads it from there.
+  coverage-badge:
+    needs: test
+    if: github.event_name == 'push' && github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: coverage
+      - name: Build badge JSON
+        run: |
+          python3 - <<'PY'
+          import json
+          pct = json.load(open("coverage.json"))["totals"]["percent_covered"]
+          color = next(c for t, c in [(90, "brightgreen"), (75, "green"),
+                                      (60, "yellow"), (40, "orange"), (0, "red")] if pct >= t)
+          json.dump({"schemaVersion": 1, "label": "coverage",
+                     "message": f"{pct:.0f}%", "color": color},
+                    open("badge.json", "w"))
+          PY
+      - name: Push to badges branch
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          mkdir out && mv badge.json out/coverage.json && cd out
+          git init -q -b badges
+          git add coverage.json
+          git -c user.name="github-actions[bot]" \
+              -c user.email="41898282+github-actions[bot]@users.noreply.github.com" \
+              commit -q -m "coverage badge for ${GITHUB_SHA}"
+          git push -q -f "https://x-access-token:${GITHUB_TOKEN}@github.com/${GITHUB_REPOSITORY}.git" badges
