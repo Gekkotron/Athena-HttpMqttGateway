@@ -775,7 +775,19 @@ All responses are encrypted and contain:
 
 ## Testing
 
-The project includes comprehensive test suites:
+### Unit Tests
+
+Offline tests (no broker, no network) run on every push via GitHub Actions:
+
+```bash
+pip install -r requirements-dev.txt
+python -m pytest
+```
+
+### Integration Test Clients
+
+These talk to a running gateway. Point them at it with `GATEWAY_URL`
+(default `http://localhost:10000`), e.g. from your git-ignored `.env`.
 
 ### Run All Tests
 
