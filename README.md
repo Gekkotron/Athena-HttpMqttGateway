@@ -1,5 +1,7 @@
 # Athena-HttpMqttGateway
 
+[![CI](https://github.com/Gekkotron/Athena-HttpMqttGateway/actions/workflows/ci.yml/badge.svg?branch=master)](https://github.com/Gekkotron/Athena-HttpMqttGateway/actions/workflows/ci.yml)
+
 An end-to-end encrypted gateway for HTTP APIs and MQTT communications, using AES-GCM. Ship home-automation traffic over the public internet through a single encrypted tunnel — no per-service certificates, no exposed brokers.
 
 ## Features
