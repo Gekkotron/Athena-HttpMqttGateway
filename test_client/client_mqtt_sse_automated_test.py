@@ -10,23 +10,7 @@ import requests
 # Add parent directory to path to import crypto module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server.crypto import CryptoManager
-from server.key_manager import load_or_generate_secret_key
-from server.config import SECRET_KEY_FILE
-
-
-def load_secret_key_str(secret_key_file):
-    """Return the first usable hex secret from a line-based secret file.
-
-    Accepts `<hex>` (legacy) and `<hex>:<scope>` (multi-secret) lines.
-    """
-    with open(secret_key_file, 'r', encoding='utf-8') as f:
-        for raw in f:
-            line = raw.split('#', 1)[0].strip()
-            if not line:
-                continue
-            return line.split(':', 1)[0].strip()
-    raise ValueError(f"No secret found in {secret_key_file}")
+from test_client._crypto import ClientCrypto, load_secret_key
 
 
 class SSETestClient:
@@ -34,8 +18,7 @@ class SSETestClient:
 
     def __init__(self, server_url: str, secret_key: str):
         self.server_url = server_url
-        secret_key_bytes = load_or_generate_secret_key(SECRET_KEY_FILE)
-        self.crypto = CryptoManager(secret_key_bytes)
+        self.crypto = ClientCrypto(secret_key)
 
     def test_subscribe_connection(self, topic: str, timeout: int = 5) -> dict:
         """
@@ -118,13 +101,13 @@ class SSETestClient:
 def main():
     secret_key_file = "data/secret_key.txt"
     try:
-        SECRET_KEY = load_secret_key_str(secret_key_file)
+        SECRET_KEY = load_secret_key(secret_key_file)
         print(f"Loaded secret key from {secret_key_file}")
     except Exception as e:
         print(f"Error loading secret key: {e}")
         return
 
-    SERVER_URL = "https://geekoma5.tail497f.ts.net/"
+    SERVER_URL = os.getenv("GATEWAY_URL", "http://localhost:10000")
     client = SSETestClient(SERVER_URL, SECRET_KEY)
 
     total_tests = 0

@@ -94,7 +94,7 @@ def main():
     except Exception as e:
         print(f"Error loading secret key: {e}")
         return
-    GATEWAY_URL = "https://geekoma5.tail497f.ts.net/"
+    GATEWAY_URL = os.getenv("GATEWAY_URL", "http://localhost:10000")
     client = EncryptedClient(GATEWAY_URL, SECRET_KEY)
 
     total_tests = 0

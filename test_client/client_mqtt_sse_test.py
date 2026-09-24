@@ -16,9 +16,8 @@ import requests
 # Add parent directory to path to import crypto module
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from server.crypto import CryptoManager
-from server.key_manager import load_or_generate_secret_key
 from server.config import SECRET_KEY_FILE
+from test_client._crypto import ClientCrypto, load_secret_key
 
 
 def subscribe_to_mqtt_topic(
@@ -43,8 +42,7 @@ def subscribe_to_mqtt_topic(
         qos: Quality of Service level (0, 1, or 2)
     """
     # Load secret key
-    secret_key = load_or_generate_secret_key(SECRET_KEY_FILE)
-    crypto = CryptoManager(secret_key)
+    crypto = ClientCrypto(load_secret_key(SECRET_KEY_FILE))
 
     # Build request payload
     payload = {
@@ -129,7 +127,7 @@ def subscribe_to_mqtt_topic(
 
 if __name__ == "__main__":
     # Example usage
-    SERVER_URL = "https://geekoma5.tail497f.ts.net/"
+    SERVER_URL = os.getenv("GATEWAY_URL", "http://localhost:10000")
 
     # Test with default MQTT broker from config
     # Subscribe to test topic

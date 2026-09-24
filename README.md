@@ -273,7 +273,7 @@ with open('data/secret_key.txt', 'r') as f:
     SECRET_KEY = f.readline().strip().split(':', 1)[0]
 
 client = EncryptedHttpClient(
-    gateway_url="https://yourdevice.tail497f.ts.net",
+    gateway_url="https://yourdevice.tailnet-name.ts.net",
     secret_key=SECRET_KEY
 )
 
@@ -549,7 +549,7 @@ class MainActivity : AppCompatActivity() {
 
         // Initialize client
         client = EncryptedGatewayClient(
-            gatewayUrl = "https://yourdevice.tail497f.ts.net",
+            gatewayUrl = "https://yourdevice.tailnet-name.ts.net",
             secretKey = "your-secret-key-here"
         )
 
@@ -658,7 +658,7 @@ fun getSecretKey(context: Context): String? {
 import okhttp3.CertificatePinner
 
 val certificatePinner = CertificatePinner.Builder()
-    .add("yourdevice.tail497f.ts.net", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
+    .add("yourdevice.tailnet-name.ts.net", "sha256/AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=")
     .build()
 
 private val client = OkHttpClient.Builder()
@@ -965,7 +965,7 @@ chmod +x run_tailscale.sh
 ./run_tailscale.sh
 ```
 
-Your gateway will be accessible via a public HTTPS URL like `https://yourdevice.tail497f.ts.net`.
+Your gateway will be accessible via a public HTTPS URL like `https://yourdevice.tailnet-name.ts.net`.
 
 ## Security Features
 
