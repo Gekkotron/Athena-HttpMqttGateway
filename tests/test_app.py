@@ -1,5 +1,7 @@
 """Endpoint tests. MQTT and outbound HTTP are stubbed; nothing leaves the process."""
+import itertools
 import json
+from types import SimpleNamespace
 from unittest import mock
 
 import pytest
@@ -166,3 +168,126 @@ def test_gateway_replay_rejected(client, full, now, fake_http):
 def test_gateway_unknown_key_is_401(client, unknown, now):
     body = unknown.encrypt({"url": "http://10.0.0.7/", "timestamp": now})
     assert client.post("/gateway", data=body).status_code == 401
+
+
+# --- error branches shared by the three encrypted endpoints ----------------
+
+ENDPOINTS = ["/gateway", "/mqtt/publish", "/mqtt/subscribe"]
+
+
+@pytest.mark.parametrize("path", ENDPOINTS)
+def test_bad_base64_is_400(client, path):
+    assert client.post(path, data=b"a").status_code == 400  # bad padding
+
+
+@pytest.mark.parametrize("path", ENDPOINTS)
+def test_truncated_ciphertext_is_400(client, path):
+    assert client.post(path, data=b"AAAA").status_code == 400  # < 12-byte nonce
+
+
+def test_publish_port_scope(client, http_only, now):
+    r = client.post("/mqtt/publish", data=http_only.encrypt({"topic": "t", "message": "m", "timestamp": now}))
+    assert _error(r, http_only) == "port not allowed for this secret"
+
+
+def test_gateway_port_scope(client, mqtt_only, now):
+    r = client.post("/gateway", data=mqtt_only.encrypt({"url": "http://10.0.0.1/", "timestamp": now}))
+    assert _error(r, mqtt_only) == "port not allowed for this secret"
+
+
+@pytest.mark.parametrize("path", ["/mqtt/publish", "/mqtt/subscribe"])
+def test_mqtt_destination_scope(client, mqtt_lan, now, fake_mqtt, path):
+    body = mqtt_lan.encrypt({"topic": "t", "message": "m", "broker_host": "192.168.1.9", "timestamp": now})
+    assert _error(client.post(path, data=body), mqtt_lan) == "destination not allowed for this secret"
+
+
+def test_publish_service_crash_is_encrypted_500(client, full, now):
+    with mock.patch(
+        "server.services.mqtt_service.MQTTService.handle_request", side_effect=RuntimeError("boom")
+    ):
+        r = client.post("/mqtt/publish", data=full.encrypt({"topic": "t", "message": "m", "timestamp": now}))
+    assert full.decrypt(r.data)["status"] == 500
+    assert _error(r, full) == "boom"
+
+
+def test_gateway_service_crash_is_encrypted_500(client, full, now):
+    with mock.patch(
+        "server.services.http_service.HttpService.handle_request", side_effect=RuntimeError("boom")
+    ):
+        r = client.post("/gateway", data=full.encrypt({"url": "http://10.0.0.1/", "timestamp": now}))
+    assert full.decrypt(r.data)["status"] == 500
+    assert _error(r, full) == "boom"
+
+
+# --- SSE stream behaviour --------------------------------------------------
+
+def _stream(client, wire, now, **payload):
+    r = client.post("/mqtt/subscribe", data=wire.encrypt({"topic": "t", "timestamp": now, **payload}))
+    return _sse_frames(r, wire)
+
+
+def test_sse_forwards_messages_json_and_text(client, full, now, monkeypatch):
+    class Chatty(FakeMQTTClient):
+        def loop_start(self):
+            self.on_connect(self, None, None, 0)
+            for body in (b'{"t": 21.5}', b"plain", b"\xff\xfe"):
+                self.on_message(self, None, SimpleNamespace(topic="t", payload=body, qos=0, retain=False))
+
+    monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Chatty)
+    frames = _stream(client, full, now)
+    assert [f["type"] for f in frames] == ["connected", "message", "message", "error"]
+    assert frames[1]["payload"] == {"t": 21.5}
+    assert frames[2]["payload"] == "plain"
+
+
+def test_sse_broker_refuses_connection(client, full, now, monkeypatch):
+    class Refused(FakeMQTTClient):
+        def loop_start(self):
+            self.on_connect(self, None, None, 5)
+
+    monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Refused)
+    [frame] = _stream(client, full, now)
+    assert frame == {"type": "error", "message": "Connection failed with code 5"}
+
+
+def test_sse_connect_exception_and_credentials(client, full, now, monkeypatch):
+    calls = []
+
+    class Unreachable(FakeMQTTClient):
+        def username_pw_set(self, *args):
+            calls.append(args)
+
+        def connect(self, *args):
+            raise OSError("no route")
+
+    monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Unreachable)
+    [frame] = _stream(client, full, now, username="u", password="p")
+    assert frame["type"] == "error" and "no route" in frame["message"]
+    assert calls == [("u", "p")]
+
+
+def test_sse_sends_keepalive_while_idle(client, full, now, monkeypatch):
+    # time.time is the global function (also read by ReplayGuard), so start
+    # the fake clock at "now"; each call then jumps 20 s past the keepalive.
+    clock = itertools.count(now, 20)
+
+    class Quiet(FakeMQTTClient):
+        def loop_start(self):
+            self.on_connect(self, None, None, 0)
+
+    real_get = mqtt_sse_service.queue.Queue.get
+    state = {"n": 0}
+
+    def get(self, timeout=None):
+        state["n"] += 1
+        if state["n"] == 2:  # after "connected": pretend one idle second
+            raise mqtt_sse_service.queue.Empty
+        if state["n"] == 3:
+            return {"type": "disconnected", "message": "bye"}
+        return real_get(self, timeout=timeout)
+
+    monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Quiet)
+    monkeypatch.setattr(mqtt_sse_service.queue.Queue, "get", get)
+    monkeypatch.setattr(mqtt_sse_service.time, "time", lambda: next(clock))
+    r = client.post("/mqtt/subscribe", data=full.encrypt({"topic": "t", "timestamp": now}))
+    assert ": keepalive" in r.get_data(as_text=True)

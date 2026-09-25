@@ -14,6 +14,10 @@ from server.app import create_app
 FULL_KEY = "11" * 32
 # HTTP-only secret, and only towards 10.0.0.0/24.
 HTTP_ONLY_KEY = "22" * 32
+# MQTT-only secret, any destination.
+MQTT_ONLY_KEY = "44" * 32
+# MQTT-only secret, only towards 10.0.0.0/24.
+MQTT_LAN_KEY = "55" * 32
 # Key the server does not know.
 UNKNOWN_KEY = "33" * 32
 
@@ -38,7 +42,8 @@ class Wire:
 def secret_file(tmp_path):
     path = tmp_path / "secret_key.txt"
     path.write_text(
-        f"# test secrets\n{FULL_KEY}:*\n{HTTP_ONLY_KEY}:80@10.0.0.0/24\n",
+        f"# test secrets\n{FULL_KEY}:*\n{HTTP_ONLY_KEY}:80@10.0.0.0/24\n"
+        f"{MQTT_ONLY_KEY}:1883\n{MQTT_LAN_KEY}:1883@10.0.0.0/24\n",
         encoding="utf-8",
     )
     return str(path)
@@ -58,6 +63,16 @@ def full():
 @pytest.fixture
 def http_only():
     return Wire(HTTP_ONLY_KEY)
+
+
+@pytest.fixture
+def mqtt_only():
+    return Wire(MQTT_ONLY_KEY)
+
+
+@pytest.fixture
+def mqtt_lan():
+    return Wire(MQTT_LAN_KEY)
 
 
 @pytest.fixture
