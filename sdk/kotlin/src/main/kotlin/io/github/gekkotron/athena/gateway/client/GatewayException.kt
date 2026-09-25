@@ -17,7 +17,11 @@ public sealed class GatewayException(message: String, cause: Throwable? = null) 
     public class Rejected(public val reason: String) : GatewayException(reason)
 
     /** The gateway failed internally, or answered with something unexpected. */
-    public class GatewayError(public val reason: String) : GatewayException(reason)
+    public class GatewayError internal constructor(public val reason: String, internal val transient: Boolean) :
+        GatewayException(reason) {
+        public constructor(reason: String) : this(reason, false)
+        override val retryable: Boolean get() = transient
+    }
 
     /** The target service (HTTP device or MQTT broker) returned a failure. */
     public class Upstream(public val status: Int, public val body: JsonElement) :

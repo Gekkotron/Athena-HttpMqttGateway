@@ -12,7 +12,9 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertIs
+import kotlin.test.assertTrue
 
 internal fun envelope(status: Int, body: JsonElement, source: String? = null): RawResponse =
     RawResponse(200, "application/octet-stream", sealed {
@@ -32,6 +34,21 @@ class ResponseDecoderTest {
     @Test fun `other plaintext status is a gateway error`() {
         val e = assertFailsWith<GatewayException.GatewayError> { decoder.http(RawResponse(502, null, "bad gateway"), true) }
         assertEquals("HTTP 502", e.reason)
+    }
+
+    @Test fun `plaintext proxy and gateway-restart statuses are retryable, others are not`() {
+        for (code in listOf(408, 429, 502, 503, 504)) {
+            val e = assertFailsWith<GatewayException.GatewayError> { decoder.http(RawResponse(code, null, "x"), true) }
+            assertTrue(e.retryable, "expected $code to be retryable")
+        }
+        val e = assertFailsWith<GatewayException.GatewayError> { decoder.http(RawResponse(500, null, "x"), true) }
+        assertFalse(e.retryable)
+    }
+
+    @Test fun `encrypted gateway-tagged 5xx stays non-retryable`() {
+        val crashed = envelope(500, JsonPrimitive("""{"error": "boom"}"""), "gateway")
+        val e = assertFailsWith<GatewayException.GatewayError> { decoder.http(crashed, false) }
+        assertFalse(e.retryable)
     }
 
     @Test fun `undecryptable 200 is a gateway error`() {

@@ -1,5 +1,6 @@
 package io.github.gekkotron.athena.gateway.client
 
+import io.github.gekkotron.athena.gateway.client.internal.RawResponse
 import io.github.gekkotron.athena.gateway.client.internal.StreamItem
 import java.io.IOException
 import kotlinx.coroutines.flow.flow
@@ -75,6 +76,14 @@ class SubscribeTest {
         repeat(3) { transport.streamReplies += flowOf(connected("a"), disconnected) }
         client.subscribe("a", reconnect = Backoff(initial = 1.seconds, max = 10.seconds)).take(3).toList()
         assertEquals(2_000, currentTime) // 1 s + 1 s, not 1 s + 2 s
+    }
+
+    @Test fun `a plaintext 503 (gateway restarting behind a proxy) is retried`() = runTest {
+        transport.streamReplies += flowOf(StreamItem.NotAStream(RawResponse(503, null, "")))
+        transport.streamReplies += flowOf(connected("a"))
+        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds)).take(1).toList()
+        assertEquals(listOf(MqttEvent.Connected(listOf("a"))), events)
+        assertEquals(2, transport.streams.size)
     }
 
     @Test fun `rejection is never retried`() = runTest {

@@ -78,6 +78,7 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
             200 -> Unit
             401 -> throw GatewayException.Unauthorized()
             400 -> throw GatewayException.BadRequest()
+            in RETRYABLE_PLAINTEXT_STATUSES -> throw GatewayException.GatewayError("HTTP ${raw.code}", transient = true)
             else -> throw GatewayException.GatewayError("HTTP ${raw.code}")
         }
         val obj = open(raw.body)
@@ -95,6 +96,11 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
         crypto.open(data)
     } catch (e: Exception) {
         throw GatewayException.GatewayError("Response could not be decrypted")
+    }
+
+    private companion object {
+        /** Plaintext (pre-decrypt) statuses a proxy or gateway restart can produce; safe to retry. */
+        val RETRYABLE_PLAINTEXT_STATUSES = setOf(408, 429, 502, 503, 504)
     }
 }
 
