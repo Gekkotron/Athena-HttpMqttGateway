@@ -4,7 +4,7 @@ Kotlin/JVM client for the [Athena HTTP/MQTT gateway](../../README.md): forward H
 requests, publish to MQTT and stream MQTT topics live, end-to-end encrypted.
 Works in any Android app (no Android framework dependency) and on the JVM.
 
-Requires a gateway at **v1.1.0 or later**.
+Requires a gateway at **v1.1 or later**.
 
 ## Install
 
@@ -16,7 +16,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1.0")
+    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1")
 }
 ```
 
@@ -104,6 +104,19 @@ val gateway = AthenaGatewayClient(baseUrl, key, okHttpClient = pinned)
 
 The client keeps your timeouts for `http`/`publish`; streams use a 45 s read timeout
 (the gateway sends a keepalive every 15 s).
+
+## Version alignment (optional)
+
+If you add more Athena artifacts later, the BOM keeps them on one version:
+
+```kotlin
+implementation(platform("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-bom:v1.1"))
+implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client")
+```
+
+## License
+
+[MIT](../../LICENSE) © Gekkotron
 
 ## Development
 

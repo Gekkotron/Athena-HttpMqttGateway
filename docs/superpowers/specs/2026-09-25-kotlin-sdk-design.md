@@ -43,13 +43,14 @@ a subproject use the multi-module coordinate form:
 ```kotlin
 repositories { maven("https://jitpack.io") }
 dependencies {
-    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1.0")
+    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1")
 }
 ```
 
 (Supersedes the `com.github.Gekkotron:Athena-HttpMqttGateway:…` form shown
-during brainstorming.) The implementation plan includes a JitPack build of a
-pre-release tag to confirm these exact coordinates before `v1.1.0`.
+during brainstorming.) Verified on JitPack (build by commit SHA): a single-artifact build is renamed to
+`com.github.Gekkotron:Athena-HttpMqttGateway`, so the build also publishes a BOM
+(`athena-gateway-bom`); with two artifacts JitPack keeps the names above. First tag: `v1.1`.
 
 ## 3. Wire format (what the SDK must match)
 

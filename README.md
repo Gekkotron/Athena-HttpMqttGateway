@@ -397,7 +397,7 @@ The SSE stream will receive encrypted messages with the following types:
 Use the official client library, [`athena-gateway-client`](sdk/kotlin/README.md):
 
 ```kotlin
-implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1.0")
+implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1")
 ```
 
 Store the secret key outside source control — e.g. in `EncryptedSharedPreferences` / the Android Keystore — and see the SDK README for certificate pinning.
@@ -912,7 +912,7 @@ sudo chown -R 1000:1000 ./data
 
 ## License
 
-This project is provided as-is for use in securing smart home and IoT communications.
+[MIT](LICENSE) © Gekkotron
 
 ## Contributing
 
