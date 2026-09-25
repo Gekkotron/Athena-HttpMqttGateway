@@ -1,0 +1,5 @@
+# JitPack builds the Kotlin client from sdk/kotlin on the first request for a tag.
+jdk:
+  - openjdk17
+install:
+  - cd sdk/kotlin && ./gradlew publishToMavenLocal -Pversion=$VERSION -x test

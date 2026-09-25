@@ -60,3 +60,19 @@ kover {
     currentProject { instrumentation { disabledForTestTasks.add("integrationTest") } }
     reports { verify { rule { minBound(85) } } }
 }
+
+publishing {
+    publications {
+        create<MavenPublication>("maven") {
+            artifactId = "athena-gateway-client"
+            from(components["java"])
+            pom {
+                name.set("Athena Gateway Client")
+                description.set("Kotlin client for the Athena end-to-end encrypted HTTP/MQTT gateway.")
+                url.set("https://github.com/Gekkotron/Athena-HttpMqttGateway")
+                developers { developer { id.set("Gekkotron"); name.set("Gekkotron") } }
+                scm { url.set("https://github.com/Gekkotron/Athena-HttpMqttGateway") }
+            }
+        }
+    }
+}
