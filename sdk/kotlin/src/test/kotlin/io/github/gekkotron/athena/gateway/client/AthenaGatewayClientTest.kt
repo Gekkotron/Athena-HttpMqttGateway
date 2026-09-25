@@ -48,4 +48,12 @@ class AthenaGatewayClientTest {
         client.publish("t", "m"); client.publish("t", "m")
         assertEquals(2, transport.posts.map { it.second }.toSet().size)
     }
+
+    @Test fun `http read timeout is timeoutSeconds plus 15, defaulting to 45`() = runTest {
+        transport.postReply = { envelope(200, JsonPrimitive("ok")) }
+        client.http("http://h", timeoutSeconds = 60)
+        assertEquals(75, transport.posts.last().third)
+        client.http("http://h")
+        assertEquals(45, transport.posts.last().third)
+    }
 }

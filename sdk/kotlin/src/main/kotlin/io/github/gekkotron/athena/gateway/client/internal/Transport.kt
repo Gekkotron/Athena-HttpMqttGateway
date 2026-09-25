@@ -30,8 +30,12 @@ internal sealed interface StreamItem {
 }
 
 internal interface Transport {
-    /** @throws GatewayException.Transport on I/O failure. */
-    suspend fun post(path: String, body: String): RawResponse
+    /**
+     * @param readTimeoutSeconds when set, raises the read timeout for this call alone (never
+     *   lowers it below the client's own configured read timeout).
+     * @throws GatewayException.Transport on I/O failure.
+     */
+    suspend fun post(path: String, body: String, readTimeoutSeconds: Int? = null): RawResponse
 
     /** Cold flow; each collection opens one connection. Ends when the server closes it. */
     fun stream(path: String, body: String): Flow<StreamItem>
@@ -40,28 +44,41 @@ internal interface Transport {
 internal class OkHttpTransport(baseUrl: String, private val client: OkHttpClient) : Transport {
     private val base: HttpUrl = baseUrl.toHttpUrl()
 
-    /** Streams sit idle between messages; the server sends a keepalive every 15 s. */
-    internal val streamClient: OkHttpClient = client.newBuilder().readTimeout(45, TimeUnit.SECONDS).build()
+    /**
+     * Streams sit idle between messages; the server sends a keepalive every 15 s. `callTimeout`
+     * is disabled: a shared client's overall call timeout would otherwise cut off every stream.
+     */
+    internal val streamClient: OkHttpClient = client.newBuilder()
+        .readTimeout(45, TimeUnit.SECONDS)
+        .callTimeout(0, TimeUnit.SECONDS)
+        .build()
 
     internal fun urlFor(path: String): HttpUrl = base.newBuilder().addPathSegments(path).build()
 
-    override suspend fun post(path: String, body: String): RawResponse = suspendCancellableCoroutine { cont ->
-        val call = client.newCall(request(path, body))
-        cont.invokeOnCancellation { call.cancel() }
-        call.enqueue(object : Callback {
-            override fun onFailure(call: Call, e: IOException) {
-                cont.resumeWithException(GatewayException.Transport(e))
+    override suspend fun post(path: String, body: String, readTimeoutSeconds: Int?): RawResponse =
+        suspendCancellableCoroutine { cont ->
+            val callClient = if (readTimeoutSeconds == null) {
+                client
+            } else {
+                val millis = maxOf(readTimeoutSeconds * 1000L, client.readTimeoutMillis.toLong())
+                client.newBuilder().readTimeout(millis, TimeUnit.MILLISECONDS).build()
             }
-
-            override fun onResponse(call: Call, response: Response) {
-                try {
-                    cont.resume(response.use { it.toRaw() })
-                } catch (e: IOException) {
+            val call = callClient.newCall(request(path, body))
+            cont.invokeOnCancellation { call.cancel() }
+            call.enqueue(object : Callback {
+                override fun onFailure(call: Call, e: IOException) {
                     cont.resumeWithException(GatewayException.Transport(e))
                 }
-            }
-        })
-    }
+
+                override fun onResponse(call: Call, response: Response) {
+                    try {
+                        cont.resume(response.use { it.toRaw() })
+                    } catch (e: IOException) {
+                        cont.resumeWithException(GatewayException.Transport(e))
+                    }
+                }
+            })
+        }
 
     override fun stream(path: String, body: String): Flow<StreamItem> = callbackFlow {
         val call = streamClient.newCall(

@@ -89,4 +89,33 @@ class OkHttpTransportTest {
     @Test fun `stream read timeout outlasts the 15 s server keepalive`() {
         assertEquals(45_000, transport.streamClient.readTimeoutMillis)
     }
+
+    @Test fun `a caller callTimeout does not cut off streams`() {
+        val client = OkHttpClient.Builder().callTimeout(5, TimeUnit.SECONDS).build()
+        val t = OkHttpTransport(server.url("/").toString(), client)
+        assertEquals(0, t.streamClient.callTimeoutMillis)
+        assertEquals(45_000, t.streamClient.readTimeoutMillis)
+    }
+
+    @Test fun `readTimeoutSeconds raises the per-call read timeout above the client default`() = runBlocking {
+        val shortReadClient = OkHttpClient.Builder().readTimeout(1, TimeUnit.SECONDS).build()
+        val t = OkHttpTransport(server.url("/").toString(), shortReadClient)
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "application/octet-stream").setBody("ENC")
+                .setBodyDelay(2, TimeUnit.SECONDS),
+        )
+        val result = withTimeout(5_000) { t.post("gateway", "B", readTimeoutSeconds = 5) }
+        assertEquals(RawResponse(200, "application/octet-stream", "ENC"), result)
+    }
+
+    @Test fun `without readTimeoutSeconds the client's own shorter read timeout applies`() = runBlocking {
+        val shortReadClient = OkHttpClient.Builder().readTimeout(1, TimeUnit.SECONDS).build()
+        val t = OkHttpTransport(server.url("/").toString(), shortReadClient)
+        server.enqueue(
+            MockResponse().setHeader("Content-Type", "application/octet-stream").setBody("ENC")
+                .setBodyDelay(2, TimeUnit.SECONDS),
+        )
+        assertFailsWith<GatewayException.Transport> { withTimeout(5_000) { t.post("gateway", "B") } }
+        Unit
+    }
 }

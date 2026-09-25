@@ -57,7 +57,11 @@ public class AthenaGatewayClient internal constructor(
         timeoutSeconds: Int? = null,
         throwOnUpstreamError: Boolean = true,
     ): GatewayResponse = decoder.http(
-        transport.post("gateway", requests.http(url, method, headers, body, timeoutSeconds)),
+        transport.post(
+            "gateway",
+            requests.http(url, method, headers, body, timeoutSeconds),
+            readTimeoutSeconds = (timeoutSeconds ?: 30) + 15,
+        ),
         throwOnUpstreamError,
     )
 
