@@ -37,4 +37,13 @@ class ModelsTest {
         assertFalse(GatewayException.Unauthorized().retryable)
         assertFalse(GatewayException.GatewayError("x").retryable)
     }
+
+    @Test fun `Broker toString hides the password`() {
+        val withPassword = Broker(host = "h", port = 1883, username = "u", password = "s3cr3t")
+        assertTrue(withPassword.toString().contains("password=***"))
+        assertFalse(withPassword.toString().contains("s3cr3t"))
+
+        val withoutPassword = Broker(host = "h")
+        assertFalse(withoutPassword.toString().contains("***"))
+    }
 }

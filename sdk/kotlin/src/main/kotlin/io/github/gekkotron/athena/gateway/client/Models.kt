@@ -25,7 +25,11 @@ public data class Broker(
     public val port: Int? = null,
     public val username: String? = null,
     public val password: String? = null,
-)
+) {
+    /** Never prints [password]: renders `password=***` when it is set. */
+    override fun toString(): String =
+        "Broker(host=$host, port=$port, username=$username, password=${if (password != null) "***" else null})"
+}
 
 /** Exponential reconnect delay for [AthenaGatewayClient.subscribe]. */
 public data class Backoff(

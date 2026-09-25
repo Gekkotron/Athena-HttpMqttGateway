@@ -7,6 +7,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 
 class AthenaGatewayClientTest {
     private val transport = FakeTransport()
@@ -55,5 +56,18 @@ class AthenaGatewayClientTest {
         assertEquals(75, transport.posts.last().third)
         client.http("http://h")
         assertEquals(45, transport.posts.last().third)
+    }
+
+    @Test fun `http and publish decode on the given dispatcher`() = runTest {
+        val recording = RecordingDispatcher()
+        val decodingClient = AthenaGatewayClient(transport, testCrypto, decodeDispatcher = recording) { 42 }
+        transport.postReply = { envelope(200, JsonPrimitive("""{"success": true, "topic": "t", "message": "ok"}""")) }
+
+        decodingClient.publish("t", "m")
+        assertTrue(recording.dispatches > 0)
+
+        val afterPublish = recording.dispatches
+        decodingClient.http("http://h")
+        assertTrue(recording.dispatches > afterPublish)
     }
 }

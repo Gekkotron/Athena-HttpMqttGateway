@@ -3,6 +3,7 @@ package io.github.gekkotron.athena.gateway.client
 import io.github.gekkotron.athena.gateway.client.internal.RawResponse
 import io.github.gekkotron.athena.gateway.client.internal.StreamItem
 import java.io.IOException
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.take
@@ -24,7 +25,10 @@ import kotlin.time.Duration.Companion.seconds
 
 class SubscribeTest {
     private val transport = FakeTransport()
-    private val client = AthenaGatewayClient(transport, testCrypto) { 42 }
+
+    // Dispatchers.Unconfined keeps decode work (flowOn(decodeDispatcher), see F7) from introducing
+    // real dispatch that would race with this file's virtual-time (currentTime/advanceTimeBy) assertions.
+    private val client = AthenaGatewayClient(transport, testCrypto, decodeDispatcher = Dispatchers.Unconfined) { 42 }
 
     private fun connected(vararg topics: String) = StreamItem.Data(sealed {
         put("type", "connected"); put("topics", buildJsonArray { topics.forEach { add(it) } })
@@ -136,5 +140,23 @@ class SubscribeTest {
 
     @Test fun `at least one topic is required`() {
         assertFailsWith<IllegalArgumentException> { client.subscribe() }
+    }
+
+    @Test fun `blank topics are rejected eagerly`() {
+        assertFailsWith<IllegalArgumentException> { client.subscribe("a", "") }
+        assertFailsWith<IllegalArgumentException> { client.subscribe("   ") }
+    }
+
+    @Test fun `bad qos is rejected eagerly`() {
+        assertFailsWith<IllegalArgumentException> { client.subscribe("a", qos = -1) }
+        assertFailsWith<IllegalArgumentException> { client.subscribe("a", qos = 3) }
+    }
+
+    @Test fun `frame decoding runs on the given dispatcher`() = runTest {
+        val recording = RecordingDispatcher()
+        val decodingClient = AthenaGatewayClient(transport, testCrypto, decodeDispatcher = recording) { 42 }
+        transport.streamReplies += flowOf(connected("a"))
+        decodingClient.subscribe("a").toList()
+        assertTrue(recording.dispatches > 0)
     }
 }
