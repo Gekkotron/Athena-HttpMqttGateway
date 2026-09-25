@@ -29,7 +29,7 @@ knowing the wire format, the crypto, or the replay rules.
 | Naming | Artifact `athena-gateway-client`, entry class `AthenaGatewayClient` — "client" makes clear the library talks to the gateway, it is not the gateway |
 | Distribution | Public GitHub repo, built by **JitPack** from git tags; no Maven Central |
 | Versioning | Server and SDK share repo tags (`v1.1.0` = first tag) |
-| HTTP | OkHttp 4.12 + `okhttp-sse` |
+| HTTP | OkHttp 4.12. SSE is parsed in-house (no `okhttp-sse`): the SDK must read the body of a non-stream rejection and needs a stream read timeout above the server's 15 s keepalive (OkHttp's default is 10 s) |
 | Async | kotlinx-coroutines: `suspend` calls, `Flow` for subscribe |
 | JSON | kotlinx-serialization-json |
 | Crypto | JDK `javax.crypto` AES/GCM/NoPadding (available on all Android levels) |
@@ -97,7 +97,7 @@ class AthenaGatewayClient(
         url: String,
         method: String = "GET",
         headers: Map<String, String> = emptyMap(),
-        body: JsonElement? = null,             // object → JSON, primitive string → raw
+        body: JsonElement? = null,             // JsonObject → JSON, JSON string → raw; anything else → IllegalArgumentException
         timeoutSeconds: Int? = null,
         throwOnUpstreamError: Boolean = true,
     ): GatewayResponse
@@ -157,7 +157,7 @@ All `internal`; one job per file.
 |---|---|---|
 | `WireCrypto` | `seal(JsonObject): String` / `open(bytes): JsonObject`; fresh 12-byte `SecureRandom` nonce per call | JDK crypto |
 | `RequestBuilder` | Builds each endpoint's payload, stamps `timestamp` from `clock`, seals it. Called anew for every attempt. | `WireCrypto` |
-| `GatewayTransport` | `post(path, body): RawResponse`; `stream(path, body): Flow<String>` (SSE `data` lines) via `callbackFlow`, cancelling the `EventSource` in `awaitClose` | OkHttp |
+| `Transport` / `OkHttpTransport` | `post(path, body): RawResponse`; `stream(path, body): Flow<StreamItem>` (SSE `data` lines, or the non-stream response) via `callbackFlow`, cancelling the OkHttp `Call` in `awaitClose`; stream read timeout 45 s | OkHttp |
 | `ResponseDecoder` | Plaintext status → exception; decrypt; normalise `body` (JSON string → parsed element where the endpoint defines it so); map to result or `GatewayException`; decode SSE frames into `MqttEvent` | `WireCrypto` |
 | `AthenaGatewayClient` | Public facade wiring the above; reconnect loop for `subscribe` | all |
 
@@ -185,13 +185,14 @@ All `internal`; one job per file.
   wait `min(initial · factor^n, max)` and retry with a **new** request; `n`
   resets after a successful `Connected`. `Unauthorized`, `BadRequest`, and
   `Rejected` are never retried (retrying cannot fix them).
-- Cancelling the collector cancels the `EventSource` immediately.
+- Cancelling the collector cancels the OkHttp `Call` immediately.
 
 ### Android packaging
 
-- Ships R8/ProGuard consumer rules at
-  `META-INF/proguard/athena-gateway-client.pro` (kotlinx-serialization keep rules
-  for the SDK's serializable models); R8 picks them up from the jar.
+- No consumer R8/ProGuard rules needed: the SDK declares no `@Serializable`
+  classes (it works on `JsonElement`), and kotlinx-serialization ships its
+  own rules. Apps using `bodyAs<T>()` keep their own `@Serializable` types as
+  usual.
 - No `android.*` imports; works on JVM desktop/server too.
 
 ## 6. Testing
@@ -222,7 +223,7 @@ All `internal`; one job per file.
 
 - `sdk/kotlin/README.md`: install, quick start (all three calls), error
   handling, reconnect, certificate pinning via custom `OkHttpClient`,
-  R8 note, Oikos-style Android snippet (ViewModel collecting `subscribe`).
+  Oikos-style Android snippet (ViewModel collecting `subscribe`).
 - Root README: replace the hand-written Kotlin client section with a short
   pointer to the SDK README; add the SDK coverage badge.
 
