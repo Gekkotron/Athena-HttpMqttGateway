@@ -4,6 +4,7 @@ import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.decodeFromJsonElement
 
 /** Lenient decoder used by [GatewayResponse.bodyAs]. */
@@ -62,14 +63,34 @@ public sealed interface MqttEvent {
     /** The gateway connected to the broker and subscribed to [topics]. */
     public data class Connected(public val topics: List<String>) : MqttEvent
 
-    /** A message on [topic]; [payload] is parsed JSON, or a JSON string for text payloads. */
+    /**
+     * A message on [topic].
+     *
+     * [raw] holds the exact bytes the broker delivered (null from gateways older than v1.2).
+     * When it is present, [payload] is built from it: UTF-8 JSON is parsed with number literals
+     * kept as sent (`21.50` stays `"21.50"` via `jsonPrimitive.content`), other UTF-8 text becomes
+     * a JSON string, and non-UTF-8 bytes become [JsonNull].
+     */
     public data class Message(
         public val topic: String,
         public val payload: JsonElement,
         public val qos: Int,
         public val retain: Boolean,
         public val timestamp: Long,
-    ) : MqttEvent
+        public val raw: ByteArray? = null,
+    ) : MqttEvent {
+        override fun equals(other: Any?): Boolean =
+            other is Message && topic == other.topic && payload == other.payload && qos == other.qos &&
+                retain == other.retain && timestamp == other.timestamp &&
+                (raw?.contentEquals(other.raw) ?: (other.raw == null))
+
+        override fun hashCode(): Int =
+            listOf(topic, payload, qos, retain, timestamp).hashCode() * 31 + (raw?.contentHashCode() ?: 0)
+
+        override fun toString(): String =
+            "Message(topic=$topic, payload=$payload, qos=$qos, retain=$retain, timestamp=$timestamp, " +
+                "raw=${raw?.let { "${it.size} bytes" }})"
+    }
 
     /**
      * Emitted only when `reconnect` is set, right before waiting [delay] to re-open the stream.

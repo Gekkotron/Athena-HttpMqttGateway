@@ -42,7 +42,7 @@ def create_app() -> Flask:
 
     @app.route("/health", methods=["GET"])
     def health():
-        return {"status": "ok", "version": "1.1.0"}, 200
+        return {"status": "ok", "version": "1.2.0"}, 200
 
     @app.route("/mqtt/publish", methods=["POST"])
     def mqtt_publish():

@@ -1,4 +1,5 @@
 """MQTT SSE subscription service handler."""
+import base64
 import json
 import time
 import queue
@@ -84,24 +85,30 @@ class MQTTSSEService:
             else:
                 message_queue.put({
                     "type": "error",
-                    "message": f"Connection failed with code {rc}"
+                    "message": f"Connection failed with code {rc}",
+                    "code": rc,
                 })
 
         def on_message(client, userdata, msg):
             try:
-                # Decode payload as UTF-8
-                payload_str = msg.payload.decode("utf-8")
-
-                # Try to parse as JSON, fallback to string if invalid
+                # Parsed payload: JSON if possible, else text; None when the
+                # bytes are not UTF-8. The raw bytes always travel alongside
+                # (payload_b64) so clients can keep exact numbers or binary data.
                 try:
-                    payload_data = json.loads(payload_str)
-                except json.JSONDecodeError:
-                    payload_data = payload_str
+                    payload_str = msg.payload.decode("utf-8")
+                except UnicodeDecodeError:
+                    payload_data = None
+                else:
+                    try:
+                        payload_data = json.loads(payload_str)
+                    except json.JSONDecodeError:
+                        payload_data = payload_str
 
                 message_queue.put({
                     "type": "message",
                     "topic": msg.topic,
                     "payload": payload_data,
+                    "payload_b64": base64.b64encode(msg.payload).decode("ascii"),
                     "qos": msg.qos,
                     "retain": msg.retain,
                     "timestamp": int(time.time())
@@ -167,7 +174,6 @@ class MQTTSSEService:
 
     def _encrypt_message(self, message: dict, secret: Secret) -> str:
         """Encrypt ``message`` under the caller's matched secret."""
-        import base64
         encrypted_data = self.crypto.encrypt(message, secret)
         return base64.b64encode(encrypted_data).decode("utf-8")
 

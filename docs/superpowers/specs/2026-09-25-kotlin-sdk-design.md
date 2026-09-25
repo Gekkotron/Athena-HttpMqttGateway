@@ -234,3 +234,14 @@ Android Keystore helpers; Java-friendly (non-suspend) API; automatic retries
 for `http` / `publish` (resending an encrypted request is exactly what the
 replay cache blocks — callers re-invoke instead); Swift/iOS SDK; Maven
 Central publishing.
+
+## 10. v1.2 additions (2026-09-26)
+
+- Server: connection-failure SSE frames carry `"code": rc`; every `message` frame carries
+  `"payload_b64"` (raw bytes); a non-UTF-8 payload is sent with `"payload": null` instead of
+  an `error` frame, so the stream survives.
+- SDK: `MqttEvent.Message.raw: ByteArray?`; when present, `payload` is rebuilt from it
+  (UTF-8 JSON parsed with literals preserved, other text → string, non-UTF-8 → `JsonNull`).
+- SDK: `GatewayException.BrokerRefused(code, reason)` for MQTT codes 4/5, never retried.
+- SDK: an undecryptable SSE frame is a retryable `GatewayError`, so `reconnect` recovers.
+

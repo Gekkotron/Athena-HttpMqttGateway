@@ -1,6 +1,7 @@
 package io.github.gekkotron.athena.gateway.client
 
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -45,5 +46,18 @@ class ModelsTest {
 
         val withoutPassword = Broker(host = "h")
         assertFalse(withoutPassword.toString().contains("***"))
+    }
+
+    @Test fun `messages compare raw bytes by content and print their size`() {
+        val a = MqttEvent.Message("t", JsonPrimitive("x"), 0, false, 1, raw = byteArrayOf(1, 2))
+        val b = MqttEvent.Message("t", JsonPrimitive("x"), 0, false, 1, raw = byteArrayOf(1, 2))
+        assertEquals(a, b)
+        assertEquals(a.hashCode(), b.hashCode())
+        assertTrue(a != b.copy(raw = byteArrayOf(9)))
+        assertTrue("raw=2 bytes" in a.toString())
+    }
+
+    @Test fun `BrokerRefused is never retried`() {
+        assertFalse(GatewayException.BrokerRefused(4, "x").retryable)
     }
 }

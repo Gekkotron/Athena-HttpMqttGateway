@@ -83,4 +83,22 @@ class GatewayIntegrationTest {
             assertEquals(JsonPrimitive("22.5 C"), received.await().payload)
         }
     }
+
+    @Test fun `number literals keep their exact form`() = runBlocking {
+        withTimeout(20_000) {
+            val connected = kotlinx.coroutines.CompletableDeferred<Unit>()
+            val received = async {
+                full.subscribe("sdk-it/number")
+                    .onEach { if (it is MqttEvent.Connected) connected.complete(Unit) }
+                    .filterIsInstance<MqttEvent.Message>()
+                    .first()
+            }
+            connected.await()
+            kotlinx.coroutines.delay(500) // the gateway reports `connected` before the broker's SUBACK
+            full.publish("sdk-it/number", "21.50")
+            val msg = received.await()
+            assertEquals("21.50", msg.payload.toString())
+            kotlin.test.assertContentEquals("21.50".encodeToByteArray(), msg.raw)
+        }
+    }
 }

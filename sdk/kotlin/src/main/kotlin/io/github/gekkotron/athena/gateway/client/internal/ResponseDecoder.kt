@@ -14,6 +14,7 @@ import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.contentOrNull
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.longOrNull
+import okio.ByteString.Companion.decodeBase64
 
 /** What the transport got back: status code, content type, and body text. */
 internal data class RawResponse(val code: Int, val contentType: String?, val body: String)
@@ -21,7 +22,7 @@ internal data class RawResponse(val code: Int, val contentType: String?, val bod
 /** One decoded SSE frame of `/mqtt/subscribe`. */
 internal sealed interface Frame {
     data class Event(val event: MqttEvent) : Frame
-    data class Error(val reason: String) : Frame
+    data class Error(val error: GatewayException) : Frame
     data object Disconnected : Frame
     data object Ignored : Frame
 }
@@ -54,7 +55,9 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
     }
 
     fun frame(data: String): Frame {
-        val obj = open(data)
+        // A corrupt frame says nothing about the next attempt, so let `reconnect` retry it.
+        val obj = open(data, transient = true)
+        val raw = obj.string("payload_b64")?.decodeBase64()?.toByteArray()
         return when (obj.string("type")) {
             "connected" -> Frame.Event(MqttEvent.Connected(
                 (obj["topics"] as? JsonArray)?.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
@@ -62,12 +65,13 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
             ))
             "message" -> Frame.Event(MqttEvent.Message(
                 topic = obj.string("topic").orEmpty(),
-                payload = obj["payload"] ?: JsonNull,
+                payload = raw?.let(::payloadOf) ?: obj["payload"] ?: JsonNull,
                 qos = (obj["qos"] as? JsonPrimitive)?.intOrNull ?: 0,
                 retain = obj["retain"].boolean() ?: false,
                 timestamp = (obj["timestamp"] as? JsonPrimitive)?.longOrNull ?: 0L,
+                raw = raw,
             ))
-            "error" -> Frame.Error(obj.string("message") ?: "stream error")
+            "error" -> Frame.Error(streamError(obj))
             "disconnected" -> Frame.Disconnected
             else -> Frame.Ignored
         }
@@ -92,10 +96,17 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
         return Envelope(status, body)
     }
 
-    private fun open(data: String): JsonObject = try {
+    private fun streamError(obj: JsonObject): GatewayException {
+        val reason = obj.string("message") ?: "stream error"
+        val code = (obj["code"] as? JsonPrimitive)?.intOrNull
+        return if (code in BROKER_LOGIN_REFUSED) GatewayException.BrokerRefused(code!!, reason)
+        else GatewayException.StreamError(reason)
+    }
+
+    private fun open(data: String, transient: Boolean = false): JsonObject = try {
         crypto.open(data)
     } catch (e: Exception) {
-        throw GatewayException.GatewayError("Response could not be decrypted")
+        throw GatewayException.GatewayError("Response could not be decrypted", transient)
     }
 
     private companion object {
@@ -114,3 +125,16 @@ private fun JsonElement.parsedIfJsonString(): JsonElement =
 
 private fun JsonElement.errorMessage(): String =
     ((this as? JsonObject)?.get("error") as? JsonPrimitive)?.contentOrNull ?: toString()
+
+/** MQTT CONNACK codes 4 (bad username or password) and 5 (not authorized). */
+private val BROKER_LOGIN_REFUSED = setOf(4, 5)
+
+/** UTF-8 JSON keeps its literals; other UTF-8 text becomes a string; anything else is null. */
+private fun payloadOf(raw: ByteArray): JsonElement {
+    val text = try {
+        raw.decodeToString(throwOnInvalidSequence = true)
+    } catch (e: CharacterCodingException) {
+        return JsonNull
+    }
+    return runCatching { Json.parseToJsonElement(text) }.getOrElse { JsonPrimitive(text) }
+}

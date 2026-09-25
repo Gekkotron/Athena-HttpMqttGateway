@@ -20,6 +20,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
@@ -158,5 +159,22 @@ class SubscribeTest {
         transport.streamReplies += flowOf(connected("a"))
         decodingClient.subscribe("a").toList()
         assertTrue(recording.dispatches > 0)
+    }
+
+    @Test fun `broker login refusal is never retried`() = runTest {
+        transport.streamReplies += flowOf(StreamItem.Data(sealed {
+            put("type", "error"); put("message", "Connection failed with code 5"); put("code", 5)
+        }))
+        val e = assertFailsWith<GatewayException.BrokerRefused> { client.subscribe("a", reconnect = Backoff()).toList() }
+        assertEquals(5, e.code)
+        assertEquals(1, transport.streams.size)
+    }
+
+    @Test fun `an undecryptable frame is retried with reconnect`() = runTest {
+        transport.streamReplies += flowOf(StreamItem.Data("AAAA"))
+        transport.streamReplies += flowOf(connected("a"))
+        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds)).take(2).toList()
+        assertIs<GatewayException.GatewayError>((events[0] as MqttEvent.Reconnecting).cause)
+        assertEquals(MqttEvent.Connected(listOf("a")), events[1])
     }
 }

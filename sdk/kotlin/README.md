@@ -4,7 +4,7 @@ Kotlin/JVM client for the [Athena HTTP/MQTT gateway](../../README.md): forward H
 requests, publish to MQTT and stream MQTT topics live, end-to-end encrypted.
 Works in any Android app (no Android framework dependency) and on the JVM.
 
-Requires a gateway at **v1.1 or later**.
+Requires a gateway at **v1.1 or later**; `Message.raw` and `BrokerRefused` need **v1.2**.
 
 ## Install
 
@@ -16,7 +16,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1")
+    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.2")
 }
 ```
 
@@ -46,7 +46,7 @@ gateway.subscribe("home/sensors/#", "home/lights/+/state").collect { event ->
 }
 ```
 
-`payload` is a `JsonElement`: JSON messages arrive parsed, text messages as a JSON string.
+`payload` is a `JsonElement`: JSON messages arrive parsed (number literals kept as sent — `21.50` stays `"21.50"` via `jsonPrimitive.content`), text messages as a JSON string, and non-UTF-8 messages as `JsonNull`. `raw` always holds the exact bytes.
 Decode typed bodies with `state.bodyAs<MyState>()` (`@Serializable` class).
 
 ## In an Android ViewModel
@@ -81,6 +81,7 @@ All failures are `GatewayException`s:
 | `Rejected(reason)` | Refused: `Request expired` (check the device clock), `Request replayed`, `port not allowed…`, `destination not allowed…` | no |
 | `GatewayError(reason)` | Gateway-side failure | no |
 | `Upstream(status, body)` | The device or broker failed (pass `throwOnUpstreamError = false` to `http` to get the response instead) | — |
+| `BrokerRefused(code, reason)` | The MQTT broker refused the login: `4` bad username/password, `5` not authorized | no |
 | `StreamError(reason)` | The live stream reported an error | yes |
 | `Transport(cause)` | Network failure | yes |
 
@@ -110,7 +111,7 @@ The client keeps your timeouts for `http`/`publish`; streams use a 45 s read tim
 If you add more Athena artifacts later, the BOM keeps them on one version:
 
 ```kotlin
-implementation(platform("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-bom:v1.1"))
+implementation(platform("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-bom:v1.2"))
 implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client")
 ```
 

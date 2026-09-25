@@ -397,7 +397,7 @@ The SSE stream will receive encrypted messages with the following types:
 Use the official client library, [`athena-gateway-client`](sdk/kotlin/README.md):
 
 ```kotlin
-implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1")
+implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.2")
 ```
 
 Store the secret key outside source control — e.g. in `EncryptedSharedPreferences` / the Android Keystore — and see the SDK README for certificate pinning.

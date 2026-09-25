@@ -27,6 +27,12 @@ public sealed class GatewayException(message: String, cause: Throwable? = null) 
     public class Upstream(public val status: Int, public val body: JsonElement) :
         GatewayException("Upstream returned $status")
 
+    /**
+     * The MQTT broker refused the gateway's login: [code] 4 (bad username or password) or
+     * 5 (not authorized). Never retried by `reconnect` — fix the credentials in [Broker].
+     */
+    public class BrokerRefused(public val code: Int, public val reason: String) : GatewayException(reason)
+
     /** The subscription stream reported an error. */
     public class StreamError(public val reason: String) : GatewayException(reason) {
         override val retryable: Boolean get() = true

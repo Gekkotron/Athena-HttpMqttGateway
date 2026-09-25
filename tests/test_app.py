@@ -1,4 +1,5 @@
 """Endpoint tests. MQTT and outbound HTTP are stubbed; nothing leaves the process."""
+import base64
 import itertools
 import json
 from types import SimpleNamespace
@@ -226,18 +227,24 @@ def _stream(client, wire, now, **payload):
     return _sse_frames(r, wire)
 
 
-def test_sse_forwards_messages_json_and_text(client, full, now, monkeypatch):
+def test_sse_forwards_messages_json_text_and_binary(client, full, now, monkeypatch):
     class Chatty(FakeMQTTClient):
         def loop_start(self):
             self.on_connect(self, None, None, 0)
-            for body in (b'{"t": 21.5}', b"plain", b"\xff\xfe"):
+            for body in (b'{"t": 21.50}', b"plain", b"\xff\xfe", b"after"):
                 self.on_message(self, None, SimpleNamespace(topic="t", payload=body, qos=0, retain=False))
+            self.on_disconnect(self, None, 0)
 
     monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Chatty)
     frames = _stream(client, full, now)
-    assert [f["type"] for f in frames] == ["connected", "message", "message", "error"]
+    assert [f["type"] for f in frames] == ["connected", "message", "message", "message", "message", "disconnected"]
     assert frames[1]["payload"] == {"t": 21.5}
     assert frames[2]["payload"] == "plain"
+    # Raw bytes travel alongside, so clients can keep 21.50 or binary data intact.
+    assert [base64.b64decode(f["payload_b64"]) for f in frames[1:5]] == [b'{"t": 21.50}', b"plain", b"\xff\xfe", b"after"]
+    # A non-UTF-8 payload no longer ends the stream.
+    assert frames[3]["payload"] is None
+    assert frames[4]["payload"] == "after"
 
 
 def test_sse_broker_refuses_connection(client, full, now, monkeypatch):
@@ -247,7 +254,7 @@ def test_sse_broker_refuses_connection(client, full, now, monkeypatch):
 
     monkeypatch.setattr(mqtt_sse_service.mqtt, "Client", Refused)
     [frame] = _stream(client, full, now)
-    assert frame == {"type": "error", "message": "Connection failed with code 5"}
+    assert frame == {"type": "error", "message": "Connection failed with code 5", "code": 5}
 
 
 def test_sse_connect_exception_and_credentials(client, full, now, monkeypatch):
@@ -317,4 +324,4 @@ def test_upstream_response_is_not_tagged(client, full, now, monkeypatch):
 
 
 def test_health_reports_version(client):
-    assert client.get("/health").get_json()["version"] == "1.1.0"
+    assert client.get("/health").get_json()["version"] == "1.2.0"

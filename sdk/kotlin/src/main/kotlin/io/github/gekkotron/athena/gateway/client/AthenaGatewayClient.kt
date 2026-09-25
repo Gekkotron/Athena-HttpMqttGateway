@@ -149,7 +149,7 @@ public class AthenaGatewayClient internal constructor(
                     is StreamItem.NotAStream -> decoder.streamRejection(item.response)
                     is StreamItem.Data -> when (val frame = decoder.frame(item.data)) {
                         is Frame.Event -> { emit(frame.event); true }
-                        is Frame.Error -> throw GatewayException.StreamError(frame.reason)
+                        is Frame.Error -> throw frame.error
                         Frame.Disconnected -> false
                         Frame.Ignored -> true
                     }

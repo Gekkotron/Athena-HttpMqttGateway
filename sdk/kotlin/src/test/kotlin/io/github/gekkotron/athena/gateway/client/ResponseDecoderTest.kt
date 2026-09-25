@@ -4,6 +4,11 @@ import io.github.gekkotron.athena.gateway.client.internal.Frame
 import io.github.gekkotron.athena.gateway.client.internal.RawResponse
 import io.github.gekkotron.athena.gateway.client.internal.ResponseDecoder
 import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonNull
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import okio.ByteString.Companion.toByteString
+import kotlin.test.assertContentEquals
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.add
 import kotlinx.serialization.json.buildJsonArray
@@ -111,12 +116,59 @@ class ResponseDecoderTest {
         })
         assertEquals(Frame.Event(MqttEvent.Message("a", JsonPrimitive("22.5 C"), 1, true, 7)), msg)
 
-        assertEquals(Frame.Error("Connection failed with code 5"), decoder.frame(sealed { put("type", "error"); put("message", "Connection failed with code 5") }))
+        val streamErr = decoder.frame(sealed { put("type", "error"); put("message", "Error processing message: x") })
+        assertEquals("Error processing message: x", assertIs<GatewayException.StreamError>((streamErr as Frame.Error).error).reason)
         assertEquals(Frame.Disconnected, decoder.frame(sealed { put("type", "disconnected"); put("message", "bye") }))
         assertEquals(Frame.Ignored, decoder.frame(sealed { put("type", "future-type") }))
     }
 
-    @Test fun `undecryptable frame is a gateway error`() {
-        assertIs<GatewayException.GatewayError>(runCatching { decoder.frame("AAAA") }.exceptionOrNull())
+    @Test fun `undecryptable frame is a retryable gateway error`() {
+        val e = assertIs<GatewayException.GatewayError>(runCatching { decoder.frame("AAAA") }.exceptionOrNull())
+        assertTrue(e.retryable)
+    }
+
+    @Test fun `broker login refusals become BrokerRefused, other codes stay StreamError`() {
+        for (code in listOf(4, 5)) {
+            val f = decoder.frame(sealed { put("type", "error"); put("message", "Connection failed with code $code"); put("code", code) })
+            val e = assertIs<GatewayException.BrokerRefused>((f as Frame.Error).error)
+            assertEquals(code, e.code)
+            assertEquals("Connection failed with code $code", e.reason)
+            assertFalse(e.retryable)
+        }
+        val other = decoder.frame(sealed { put("type", "error"); put("message", "Connection failed with code 3"); put("code", 3) })
+        assertTrue(assertIs<GatewayException.StreamError>((other as Frame.Error).error).retryable)
+    }
+
+    private fun messageFrame(raw: ByteArray?, payload: JsonElement = JsonPrimitive("server-parsed")) = decoder.frame(sealed {
+        put("type", "message"); put("topic", "t"); put("payload", payload); put("qos", 0); put("retain", false); put("timestamp", 1)
+        if (raw != null) put("payload_b64", raw.toByteString().base64())
+    }) as Frame.Event
+
+    @Test fun `payload is rebuilt from raw bytes, keeping number literals`() {
+        val msg = messageFrame("21.50".encodeToByteArray()).event as MqttEvent.Message
+        assertEquals("21.50", msg.payload.jsonPrimitive.content)
+        assertEquals("21.50", msg.payload.toString())
+        assertContentEquals("21.50".encodeToByteArray(), msg.raw)
+
+        val obj = messageFrame("""{"t": 21.50}""".encodeToByteArray()).event as MqttEvent.Message
+        assertEquals("21.50", obj.payload.jsonObject["t"]!!.jsonPrimitive.content)
+    }
+
+    @Test fun `text and empty payloads become JSON strings`() {
+        assertEquals(JsonPrimitive("22.5 C"), (messageFrame("22.5 C".encodeToByteArray()).event as MqttEvent.Message).payload)
+        assertEquals(JsonPrimitive(""), (messageFrame(ByteArray(0)).event as MqttEvent.Message).payload)
+    }
+
+    @Test fun `non-UTF-8 payload is JsonNull with raw bytes kept`() {
+        val bytes = byteArrayOf(0xff.toByte(), 0xfe.toByte(), 0x00)
+        val msg = messageFrame(bytes, payload = JsonNull).event as MqttEvent.Message
+        assertEquals(JsonNull, msg.payload)
+        assertContentEquals(bytes, msg.raw)
+    }
+
+    @Test fun `older gateways without payload_b64 fall back to the parsed payload`() {
+        val msg = messageFrame(null).event as MqttEvent.Message
+        assertEquals(JsonPrimitive("server-parsed"), msg.payload)
+        assertEquals(null, msg.raw)
     }
 }
