@@ -11,6 +11,7 @@ permissions:
 jobs:
   test:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     strategy:
       fail-fast: false
       matrix:
@@ -32,6 +33,7 @@ jobs:
 
   sdk-unit:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     defaults:
       run:
         working-directory: sdk/kotlin
@@ -50,6 +52,7 @@ jobs:
 
   sdk-integration:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     env:
       GATEWAY_URL: http://127.0.0.1:10000
       ECHO_URL: http://127.0.0.1:8000/state.json

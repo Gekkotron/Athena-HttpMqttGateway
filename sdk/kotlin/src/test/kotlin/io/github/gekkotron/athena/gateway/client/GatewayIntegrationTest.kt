@@ -1,6 +1,7 @@
 package io.github.gekkotron.athena.gateway.client
 
 import kotlinx.coroutines.async
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.filterIsInstance
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.onEach
@@ -44,6 +45,7 @@ class GatewayIntegrationTest {
                     .first()
             }
             connected.await()
+            delay(500) // the server emits `connected` before SUBACK; give the broker time to finish subscribing
             assertEquals(PublishResult("sdk-it/b"), full.publish("sdk-it/b", """{"n": 1}"""))
             val msg = received.await()
             assertEquals("sdk-it/b", msg.topic)
@@ -76,6 +78,7 @@ class GatewayIntegrationTest {
                     .first()
             }
             connected.await()
+            delay(500) // the server emits `connected` before SUBACK; give the broker time to finish subscribing
             full.publish("sdk-it/text", "22.5 C")
             assertEquals(JsonPrimitive("22.5 C"), received.await().payload)
         }

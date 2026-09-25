@@ -86,6 +86,9 @@ All failures are `GatewayException`s:
 
 `http` and `publish` never retry on their own: call them again if you need to.
 
+`GatewayError`/`Upstream` messages can contain the target URL or upstream error text; don't send
+them verbatim to crash reporters.
+
 ## Certificate pinning
 
 ```kotlin

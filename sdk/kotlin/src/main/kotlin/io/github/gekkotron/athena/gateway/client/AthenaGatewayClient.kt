@@ -26,12 +26,6 @@ import okhttp3.OkHttpClient
  * Client for an Athena HTTP/MQTT gateway.
  *
  * Thread-safe; create one instance and share it.
- *
- * @param baseUrl gateway root, e.g. `https://myhost.tailnet-name.ts.net` (a path prefix is allowed).
- * @param secretKey the 64-hex-character secret configured on the gateway.
- * @param okHttpClient bring your own client for certificate pinning, proxies or timeouts.
- * @param clock unix seconds used for request timestamps; override only in tests.
- * @throws IllegalArgumentException if [baseUrl] or [secretKey] is malformed.
  */
 public class AthenaGatewayClient internal constructor(
     private val transport: Transport,
@@ -39,6 +33,14 @@ public class AthenaGatewayClient internal constructor(
     private val decodeDispatcher: CoroutineDispatcher = Dispatchers.Default,
     clock: () -> Long,
 ) {
+    /**
+     * @param baseUrl gateway root, e.g. `https://myhost.tailnet-name.ts.net` (a path prefix is allowed).
+     * @param secretKey the 64-hex-character secret configured on the gateway.
+     * @param okHttpClient bring your own client for certificate pinning, proxies or timeouts.
+     * @param clock unix seconds used for request timestamps; override to correct a skewed device
+     *   clock (the gateway rejects requests more than 60 s off).
+     * @throws IllegalArgumentException if [baseUrl] or [secretKey] is malformed.
+     */
     public constructor(
         baseUrl: String,
         secretKey: String,
