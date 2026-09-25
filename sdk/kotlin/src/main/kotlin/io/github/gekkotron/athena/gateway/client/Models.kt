@@ -49,7 +49,11 @@ public data class Backoff(
     }
 }
 
-/** Events emitted by [AthenaGatewayClient.subscribe]. */
+/**
+ * Events emitted by [AthenaGatewayClient.subscribe].
+ *
+ * New event types may be added in minor releases; include an `else` branch when matching.
+ */
 public sealed interface MqttEvent {
     /** The gateway connected to the broker and subscribed to [topics]. */
     public data class Connected(public val topics: List<String>) : MqttEvent
@@ -62,4 +66,10 @@ public sealed interface MqttEvent {
         public val retain: Boolean,
         public val timestamp: Long,
     ) : MqttEvent
+
+    /**
+     * Emitted only when `reconnect` is set, right before waiting [delay] to re-open the stream.
+     * [cause] is null when the stream ended normally via `disconnected`, or the failure otherwise.
+     */
+    public data class Reconnecting(public val cause: Throwable?, public val delay: Duration) : MqttEvent
 }

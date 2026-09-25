@@ -40,6 +40,8 @@ gateway.subscribe("home/sensors/#", "home/lights/+/state").collect { event ->
     when (event) {
         is MqttEvent.Connected -> println("subscribed to ${event.topics}")
         is MqttEvent.Message -> println("${event.topic}: ${event.payload}")
+        is MqttEvent.Reconnecting -> println("reconnecting in ${event.delay}")
+        else -> {} // new event types may be added in minor releases
     }
 }
 ```
@@ -65,6 +67,8 @@ class SensorsViewModel(private val gateway: AthenaGatewayClient) : ViewModel() {
 stream after disconnects, stream errors and network failures, doubling the wait each time
 and resetting once connected. Every attempt is a newly encrypted request (the gateway
 rejects replays). Without `reconnect`, the flow completes on disconnect and throws on error.
+Right before each wait, a `MqttEvent.Reconnecting(cause, delay)` is emitted (`cause` is null
+for a normal disconnect); it is only ever emitted when `reconnect` is set.
 
 ## Errors
 

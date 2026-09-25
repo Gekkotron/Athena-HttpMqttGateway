@@ -19,6 +19,7 @@ import kotlinx.serialization.json.put
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlin.time.Duration.Companion.seconds
 
 class SubscribeTest {
@@ -63,27 +64,54 @@ class SubscribeTest {
 
     @Test fun `reconnects with backoff and a fresh request each time`() = runTest {
         transport.streamReplies += flowOf(connected("a"), disconnected)                   // ends -> wait 1 s
-        transport.streamReplies += flow { throw GatewayException.Transport(IOException("reset")) } // -> wait 2 s
+        val transportFailure = GatewayException.Transport(IOException("reset"))
+        transport.streamReplies += flow { throw transportFailure } // -> wait 2 s
         transport.streamReplies += flowOf(connected("a"), message("a", "on"))
-        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds, max = 10.seconds)).take(3).toList()
+        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds, max = 10.seconds)).take(5).toList()
 
-        assertEquals(3, events.size)
+        assertEquals(
+            listOf(
+                MqttEvent.Connected(listOf("a")),
+                MqttEvent.Reconnecting(null, 1.seconds),
+                MqttEvent.Reconnecting(transportFailure, 2.seconds),
+                MqttEvent.Connected(listOf("a")),
+                MqttEvent.Message("a", JsonPrimitive("on"), 0, false, 1),
+            ),
+            events,
+        )
         assertEquals(3_000, currentTime)
         assertEquals(3, transport.streams.map { it.second }.toSet().size) // three distinct ciphertexts
     }
 
     @Test fun `backoff resets after a successful connect`() = runTest {
         repeat(3) { transport.streamReplies += flowOf(connected("a"), disconnected) }
-        client.subscribe("a", reconnect = Backoff(initial = 1.seconds, max = 10.seconds)).take(3).toList()
+        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds, max = 10.seconds)).take(5).toList()
+        assertEquals(
+            listOf(
+                MqttEvent.Connected(listOf("a")),
+                MqttEvent.Reconnecting(null, 1.seconds),
+                MqttEvent.Connected(listOf("a")),
+                MqttEvent.Reconnecting(null, 1.seconds),
+                MqttEvent.Connected(listOf("a")),
+            ),
+            events,
+        )
         assertEquals(2_000, currentTime) // 1 s + 1 s, not 1 s + 2 s
     }
 
     @Test fun `a plaintext 503 (gateway restarting behind a proxy) is retried`() = runTest {
         transport.streamReplies += flowOf(StreamItem.NotAStream(RawResponse(503, null, "")))
         transport.streamReplies += flowOf(connected("a"))
-        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds)).take(1).toList()
-        assertEquals(listOf(MqttEvent.Connected(listOf("a"))), events)
+        val events = client.subscribe("a", reconnect = Backoff(initial = 1.seconds)).take(2).toList()
+        assertEquals(1.seconds, (events[0] as MqttEvent.Reconnecting).delay)
+        assertEquals(MqttEvent.Connected(listOf("a")), events[1])
         assertEquals(2, transport.streams.size)
+    }
+
+    @Test fun `no Reconnecting is ever emitted when reconnect is null`() = runTest {
+        transport.streamReplies += flowOf(connected("a"), message("a", "on"), disconnected)
+        val events = client.subscribe("a").toList()
+        assertTrue(events.none { it is MqttEvent.Reconnecting })
     }
 
     @Test fun `rejection is never retried`() = runTest {

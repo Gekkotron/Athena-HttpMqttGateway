@@ -107,7 +107,11 @@ public class AthenaGatewayClient internal constructor(
                     .onCompletion { cause -> if (cause == null) throw StreamEnded }
                     .retryWhen { cause, _ ->
                         val retry = cause === StreamEnded || (cause is GatewayException && cause.retryable)
-                        if (retry) delay(backoff.delayFor(failures++))
+                        if (retry) {
+                            val wait = backoff.delayFor(failures++)
+                            emit(MqttEvent.Reconnecting(cause.takeIf { it !== StreamEnded }, wait))
+                            delay(wait)
+                        }
                         retry
                     },
             )
