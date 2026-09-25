@@ -24,6 +24,13 @@ kotlin {
     compilerOptions { jvmTarget.set(JvmTarget.JVM_11) }
 }
 
+// kotlinx-coroutines-test's virtual-time APIs (currentTime, advanceTimeBy) are
+// @ExperimentalCoroutinesApi; opt in for test code only so SubscribeTest can use them
+// without a per-usage annotation or new compiler warnings.
+tasks.named<org.jetbrains.kotlin.gradle.tasks.KotlinCompile>("compileTestKotlin") {
+    compilerOptions.optIn.add("kotlinx.coroutines.ExperimentalCoroutinesApi")
+}
+
 dependencies {
     api("com.squareup.okhttp3:okhttp:4.12.0")
     api("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.9.0")
