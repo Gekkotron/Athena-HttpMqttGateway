@@ -1,4 +1,4 @@
-# Kotlin SDK for Athena-HttpMqttGateway — Design
+# Athena Gateway Client (Kotlin SDK) — Design
 
 - **Date:** 2026-09-25
 - **Author:** Gekkotron
@@ -26,13 +26,14 @@ knowing the wire format, the crypto, or the replay rules.
 |---|---|
 | Platform | Pure Kotlin/JVM library (no Android framework dependency), Java 11 bytecode |
 | Location | `sdk/kotlin/` in this repo |
+| Naming | Artifact `athena-gateway-client`, entry class `AthenaGatewayClient` — "client" makes clear the library talks to the gateway, it is not the gateway |
 | Distribution | Public GitHub repo, built by **JitPack** from git tags; no Maven Central |
 | Versioning | Server and SDK share repo tags (`v1.1.0` = first tag) |
 | HTTP | OkHttp 4.12 + `okhttp-sse` |
 | Async | kotlinx-coroutines: `suspend` calls, `Flow` for subscribe |
 | JSON | kotlinx-serialization-json |
 | Crypto | JDK `javax.crypto` AES/GCM/NoPadding (available on all Android levels) |
-| Package | `io.github.gekkotron.athena.gateway` |
+| Package | `io.github.gekkotron.athena.gateway.client` |
 
 ### Install coordinates
 
@@ -42,7 +43,7 @@ a subproject use the multi-module coordinate form:
 ```kotlin
 repositories { maven("https://jitpack.io") }
 dependencies {
-    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway:v1.1.0")
+    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.1.0")
 }
 ```
 
@@ -86,7 +87,7 @@ device's 403. Covered by new pytest cases.
 ## 4. Public API
 
 ```kotlin
-class AthenaGateway(
+class AthenaGatewayClient(
     baseUrl: String,
     secretKey: String,                         // 64 hex chars; validated eagerly
     okHttpClient: OkHttpClient = OkHttpClient(),
@@ -158,7 +159,7 @@ All `internal`; one job per file.
 | `RequestBuilder` | Builds each endpoint's payload, stamps `timestamp` from `clock`, seals it. Called anew for every attempt. | `WireCrypto` |
 | `GatewayTransport` | `post(path, body): RawResponse`; `stream(path, body): Flow<String>` (SSE `data` lines) via `callbackFlow`, cancelling the `EventSource` in `awaitClose` | OkHttp |
 | `ResponseDecoder` | Plaintext status → exception; decrypt; normalise `body` (JSON string → parsed element where the endpoint defines it so); map to result or `GatewayException`; decode SSE frames into `MqttEvent` | `WireCrypto` |
-| `AthenaGateway` | Public facade wiring the above; reconnect loop for `subscribe` | all |
+| `AthenaGatewayClient` | Public facade wiring the above; reconnect loop for `subscribe` | all |
 
 ### Error mapping
 
@@ -189,7 +190,7 @@ All `internal`; one job per file.
 ### Android packaging
 
 - Ships R8/ProGuard consumer rules at
-  `META-INF/proguard/athena-gateway.pro` (kotlinx-serialization keep rules
+  `META-INF/proguard/athena-gateway-client.pro` (kotlinx-serialization keep rules
   for the SDK's serializable models); R8 picks them up from the jar.
 - No `android.*` imports; works on JVM desktop/server too.
 
