@@ -74,13 +74,15 @@ class MQTTService:
                 "body": json.dumps({
                     "error": f"Missing required field: {str(e)}"
                 }),
-                "timestamp": int(time.time())
+                "timestamp": int(time.time()),
+                "source": "gateway",
             }
         except Exception as e:
             response_payload = {
                 "status": 500,
                 "body": json.dumps({"error": f"MQTT error: {str(e)}"}),
-                "timestamp": int(time.time())
+                "timestamp": int(time.time()),
+                "source": "gateway",
             }
         
         return self.crypto.encrypt(response_payload, secret)

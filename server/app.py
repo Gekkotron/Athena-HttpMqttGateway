@@ -17,6 +17,7 @@ def _encrypted_error(crypto: CryptoManager, secret: Secret, status: int, message
         "status": status,
         "body": {"error": message},
         "timestamp": int(time.time()),
+        "source": "gateway",
     }
     encrypted = base64.b64encode(crypto.encrypt(error_payload, secret))
     return Response(encrypted, mimetype="application/octet-stream")
@@ -41,7 +42,7 @@ def create_app() -> Flask:
 
     @app.route("/health", methods=["GET"])
     def health():
-        return {"status": "ok", "version": "1.0.0"}, 200
+        return {"status": "ok", "version": "1.1.0"}, 200
 
     @app.route("/mqtt/publish", methods=["POST"])
     def mqtt_publish():

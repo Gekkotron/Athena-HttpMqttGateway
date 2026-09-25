@@ -81,6 +81,7 @@ class GatewayHandler:
             "status": status,
             "body": json.dumps({"error": message}),
             "timestamp": int(time.time()),
+            "source": "gateway",
         }
         encrypted = base64.b64encode(self.crypto.encrypt(error_payload, secret))
         return Response(encrypted, mimetype="application/octet-stream")

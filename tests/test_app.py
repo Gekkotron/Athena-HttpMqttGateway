@@ -291,3 +291,30 @@ def test_sse_sends_keepalive_while_idle(client, full, now, monkeypatch):
     monkeypatch.setattr(mqtt_sse_service.time, "time", lambda: next(clock))
     r = client.post("/mqtt/subscribe", data=full.encrypt({"topic": "t", "timestamp": now}))
     assert ": keepalive" in r.get_data(as_text=True)
+
+
+# --- gateway error tagging -------------------------------------------------
+
+
+@pytest.mark.parametrize("path, payload", [
+    ("/gateway", {"url": "http://10.0.0.1/"}),
+    ("/mqtt/publish", {"topic": "t", "message": "m"}),
+    ("/mqtt/subscribe", {"topic": "t"}),
+])
+def test_gateway_errors_are_tagged(client, full, path, payload):
+    r = client.post(path, data=full.encrypt({**payload, "timestamp": 0}))  # expired
+    assert full.decrypt(r.data)["source"] == "gateway"
+
+
+def test_upstream_response_is_not_tagged(client, full, now, monkeypatch):
+    from server.services import http_service
+    resp = mock.Mock(status_code=403, text="denied")
+    resp.json.side_effect = ValueError
+    monkeypatch.setattr(http_service.requests, "request", mock.Mock(return_value=resp))
+    r = client.post("/gateway", data=full.encrypt({"url": "http://10.0.0.1/", "timestamp": now}))
+    out = full.decrypt(r.data)
+    assert out["status"] == 403 and "source" not in out
+
+
+def test_health_reports_version(client):
+    assert client.get("/health").get_json()["version"] == "1.1.0"

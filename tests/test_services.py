@@ -161,3 +161,16 @@ def test_mqtt_publish_connection_error(crypto, secret, fake_mqtt):
     out = _open(crypto, MQTTService(crypto).handle_request({"topic": "t", "message": "m"}, secret))
     assert out["status"] == 500
     assert "refused" in json.loads(out["body"])["error"]
+
+
+def test_mqtt_internal_errors_are_tagged(crypto, secret, fake_mqtt):
+    missing = _open(crypto, MQTTService(crypto).handle_request({"topic": "t"}, secret))
+    fake_mqtt.connect.side_effect = OSError("refused")
+    crashed = _open(crypto, MQTTService(crypto).handle_request({"topic": "t", "message": "m"}, secret))
+    assert missing["source"] == crashed["source"] == "gateway"
+
+
+def test_mqtt_broker_rejection_is_not_tagged(crypto, secret, fake_mqtt):
+    fake_mqtt.publish.return_value = SimpleNamespace(rc=4)
+    out = _open(crypto, MQTTService(crypto).handle_request({"topic": "t", "message": "m"}, secret))
+    assert "source" not in out
