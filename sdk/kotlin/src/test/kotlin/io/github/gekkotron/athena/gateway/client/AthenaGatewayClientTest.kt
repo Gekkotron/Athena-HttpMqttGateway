@@ -1,7 +1,10 @@
 package io.github.gekkotron.athena.gateway.client
 
 import kotlinx.coroutines.test.runTest
+import io.github.gekkotron.athena.gateway.client.internal.RawResponse
+import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
+import okio.ByteString.Companion.toByteString
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
 import kotlin.test.Test
@@ -35,6 +38,22 @@ class AthenaGatewayClientTest {
         transport.postReply = { envelope(404, JsonPrimitive("nope")) }
         assertFailsWith<GatewayException.Upstream> { client.http("http://h") }
         assertEquals(404, client.http("http://h", throwOnUpstreamError = false).status)
+    }
+
+    @Test fun `download posts a raw GET and returns the bytes`() = runTest {
+        val data = byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+        transport.postReply = {
+            RawResponse(200, null, sealed {
+                put("status", 200); put("body", JsonNull); put("body_b64", data.toByteString().base64())
+                put("content_type", "image/jpeg"); put("timestamp", 0)
+            })
+        }
+        assertEquals(GatewayDownload(200, data, "image/jpeg"), client.download("http://10.0.0.1/s.jpg", timeoutSeconds = 60))
+        val (path, body, readTimeout) = transport.posts.single()
+        assertEquals("gateway", path)
+        assertEquals(JsonPrimitive(true), opened(body)["raw"])
+        assertEquals(JsonPrimitive("GET"), opened(body)["method"])
+        assertEquals(75, readTimeout)
     }
 
     @Test fun `publish posts to mqtt publish`() = runTest {

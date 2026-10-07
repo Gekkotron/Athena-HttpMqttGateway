@@ -1,8 +1,10 @@
 """HTTP service handler for generic HTTP requests."""
+import base64
 import time
 import logging
 import requests
 
+from .. import config
 from ..crypto import CryptoManager
 from ..key_manager import Secret
 
@@ -69,6 +71,8 @@ class HttpService:
         # Get timeout (default 30 seconds)
         timeout = payload.get("timeout", 30)
 
+        raw = payload.get("raw") is True
+
         # Prepare request kwargs
         request_kwargs = {
             "method": method,
@@ -77,6 +81,8 @@ class HttpService:
             "timeout": timeout,
             "allow_redirects": True  # Allow redirects by default
         }
+        if raw:
+            request_kwargs["stream"] = True
 
         # Add body based on type
         if isinstance(body, dict):
@@ -98,6 +104,9 @@ class HttpService:
             logger.error(f"Error making HTTP request to {url}: {str(e)}")
             raise
 
+        if raw:
+            return self._raw_response(resp, secret)
+
         # Build response payload
         try:
             body = resp.json()
@@ -112,4 +121,34 @@ class HttpService:
         }
 
         logger.info("Request handled successfully, returning encrypted response")
+        return self.crypto.encrypt(response_payload, secret)
+
+    def _raw_response(self, resp, secret: Secret) -> bytes:
+        """Encrypt the upstream body as exact bytes (base64), enforcing the size cap."""
+        limit = config.HTTP_MAX_RESPONSE_BYTES
+        try:
+            declared = resp.headers.get("Content-Length")
+            if declared is not None and declared.isdigit() and int(declared) > limit:
+                raise ValueError("response too large")
+
+            chunks = []
+            total = 0
+            for chunk in resp.iter_content(chunk_size=64 * 1024):
+                total += len(chunk)
+                if total > limit:
+                    raise ValueError("response too large")
+                chunks.append(chunk)
+            data = b"".join(chunks)
+            content_type = resp.headers.get("Content-Type")
+        finally:
+            resp.close()
+
+        response_payload = {
+            "status": resp.status_code,
+            "body": None,
+            "body_b64": base64.b64encode(data).decode("ascii"),
+            "content_type": content_type,
+            "timestamp": int(time.time())
+        }
+        logger.info("Raw request handled successfully (%d bytes)", len(data))
         return self.crypto.encrypt(response_payload, secret)

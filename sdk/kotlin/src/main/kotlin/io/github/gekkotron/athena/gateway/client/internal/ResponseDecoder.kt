@@ -1,6 +1,7 @@
 package io.github.gekkotron.athena.gateway.client.internal
 
 import io.github.gekkotron.athena.gateway.client.GatewayException
+import io.github.gekkotron.athena.gateway.client.GatewayDownload
 import io.github.gekkotron.athena.gateway.client.GatewayResponse
 import io.github.gekkotron.athena.gateway.client.MqttEvent
 import io.github.gekkotron.athena.gateway.client.PublishResult
@@ -29,12 +30,22 @@ internal sealed interface Frame {
 
 internal class ResponseDecoder(private val crypto: WireCrypto) {
 
-    private class Envelope(val status: Int, val body: JsonElement)
+    private class Envelope(val status: Int, val body: JsonElement, val fields: JsonObject)
 
     fun http(raw: RawResponse, throwOnUpstreamError: Boolean): GatewayResponse {
         val env = envelope(raw)
         if (env.status !in 200..299 && throwOnUpstreamError) throw GatewayException.Upstream(env.status, env.body)
         return GatewayResponse(env.status, env.body)
+    }
+
+    fun download(raw: RawResponse, throwOnUpstreamError: Boolean): GatewayDownload {
+        val env = envelope(raw)
+        if (env.status !in 200..299 && throwOnUpstreamError) throw GatewayException.Upstream(env.status, env.body)
+        val b64 = env.fields.string("body_b64")
+            ?: throw GatewayException.GatewayError("gateway does not support raw downloads (needs v1.3+)")
+        val bytes = b64.decodeBase64()?.toByteArray()
+            ?: throw GatewayException.GatewayError("Response body is not valid base64")
+        return GatewayDownload(env.status, bytes, env.fields.string("content_type"))
     }
 
     fun publish(raw: RawResponse): PublishResult {
@@ -93,7 +104,7 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
             val reason = body.parsedIfJsonString().errorMessage()
             throw if (status == 403) GatewayException.Rejected(reason) else GatewayException.GatewayError(reason)
         }
-        return Envelope(status, body)
+        return Envelope(status, body, obj)
     }
 
     private fun streamError(obj: JsonObject): GatewayException {

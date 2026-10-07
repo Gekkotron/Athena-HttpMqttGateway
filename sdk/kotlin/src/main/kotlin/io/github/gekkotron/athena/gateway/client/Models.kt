@@ -17,6 +17,21 @@ public data class GatewayResponse(public val status: Int, public val body: JsonE
     public inline fun <reified T> bodyAs(json: Json = GatewayJson): T = json.decodeFromJsonElement(body)
 }
 
+/** A file fetched with [AthenaGatewayClient.download]: the exact upstream [bytes] and their [contentType]. */
+public data class GatewayDownload(
+    public val status: Int,
+    public val bytes: ByteArray,
+    public val contentType: String?,
+) {
+    override fun equals(other: Any?): Boolean =
+        other is GatewayDownload && status == other.status && contentType == other.contentType &&
+            bytes.contentEquals(other.bytes)
+
+    override fun hashCode(): Int = (status * 31 + (contentType?.hashCode() ?: 0)) * 31 + bytes.contentHashCode()
+
+    override fun toString(): String = "GatewayDownload(status=$status, bytes=${bytes.size} bytes, contentType=$contentType)"
+}
+
 /** A successful MQTT publish. */
 public data class PublishResult(public val topic: String)
 

@@ -220,6 +220,20 @@ def test_gateway_service_crash_is_encrypted_500(client, full, now):
     assert _error(r, full) == "boom"
 
 
+def test_gateway_raw_response_too_large_is_encrypted_500(client, full, now, monkeypatch):
+    from server import config
+    from server.services import http_service
+
+    monkeypatch.setattr(config, "HTTP_MAX_RESPONSE_BYTES", 4)
+    resp = mock.Mock(status_code=200, headers={})
+    resp.iter_content.return_value = iter([b"abc", b"def"])
+    monkeypatch.setattr(http_service.requests, "request", mock.Mock(return_value=resp))
+    r = client.post("/gateway", data=full.encrypt({"url": "http://10.0.0.1/", "raw": True, "timestamp": now}))
+    assert full.decrypt(r.data)["status"] == 500
+    assert _error(r, full) == "response too large"
+    resp.close.assert_called()
+
+
 # --- SSE stream behaviour --------------------------------------------------
 
 def _stream(client, wire, now, **payload):
@@ -324,4 +338,4 @@ def test_upstream_response_is_not_tagged(client, full, now, monkeypatch):
 
 
 def test_health_reports_version(client):
-    assert client.get("/health").get_json()["version"] == "1.2.0"
+    assert client.get("/health").get_json()["version"] == "1.3.0"

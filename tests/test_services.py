@@ -1,4 +1,5 @@
 """HttpService / MQTTService: outbound calls stubbed, responses decrypted and checked."""
+import base64
 import json
 from types import SimpleNamespace
 from unittest import mock
@@ -32,8 +33,9 @@ def _open(crypto, blob):
 
 # --- HttpService -----------------------------------------------------------
 
-def _response(status=200, json_body=None, text=""):
-    resp = mock.Mock(status_code=status, text=text)
+def _response(status=200, json_body=None, text="", chunks=(), headers=None):
+    resp = mock.Mock(status_code=status, text=text, headers=headers or {})
+    resp.iter_content.side_effect = lambda chunk_size=1: iter(chunks)
     if json_body is None:
         resp.json.side_effect = ValueError("not json")
     else:
@@ -58,6 +60,57 @@ def test_http_uses_url_and_defaults(crypto, secret, fake_request):
     assert kwargs["headers"] == {"Content-Type": "application/json"}
     assert kwargs["timeout"] == 30
     assert "json" not in kwargs and "data" not in kwargs
+
+
+def test_http_non_raw_is_unchanged(crypto, secret, fake_request):
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/x"}, secret))
+    assert "body_b64" not in out and "content_type" not in out
+    assert "stream" not in fake_request.call_args.kwargs
+    fake_request.return_value.iter_content.assert_not_called()
+
+
+def test_http_raw_returns_exact_bytes(crypto, secret, fake_request):
+    data = b"\xff\xd8\xff\xe0"
+    fake_request.return_value = _response(chunks=[data[:2], data[2:]], headers={"Content-Type": "image/jpeg"})
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/s.jpg", "method": "GET", "raw": True}, secret))
+
+    assert out["status"] == 200 and out["body"] is None
+    assert base64.b64decode(out["body_b64"]) == data
+    assert out["content_type"] == "image/jpeg"
+    assert fake_request.call_args.kwargs["stream"] is True
+    fake_request.return_value.close.assert_called()
+
+
+def test_http_raw_without_content_type(crypto, secret, fake_request):
+    fake_request.return_value = _response(chunks=[b"x"])
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/", "raw": True}, secret))
+    assert out["content_type"] is None
+
+
+def test_http_raw_rejects_declared_length_over_cap(crypto, secret, fake_request, monkeypatch):
+    monkeypatch.setattr(http_service.config, "HTTP_MAX_RESPONSE_BYTES", 10)
+    resp = _response(chunks=[b"x"], headers={"Content-Length": "11"})
+    fake_request.return_value = resp
+    with pytest.raises(ValueError, match="response too large"):
+        HttpService(crypto).handle_request({"url": "http://h/", "raw": True}, secret)
+    resp.iter_content.assert_not_called()
+    resp.close.assert_called()
+
+
+def test_http_raw_rejects_streamed_bytes_over_cap(crypto, secret, fake_request, monkeypatch):
+    monkeypatch.setattr(http_service.config, "HTTP_MAX_RESPONSE_BYTES", 5)
+    resp = _response(chunks=[b"abc", b"def"])
+    fake_request.return_value = resp
+    with pytest.raises(ValueError, match="response too large"):
+        HttpService(crypto).handle_request({"url": "http://h/", "raw": True}, secret)
+    resp.close.assert_called()
+
+
+def test_http_raw_at_cap_is_accepted(crypto, secret, fake_request, monkeypatch):
+    monkeypatch.setattr(http_service.config, "HTTP_MAX_RESPONSE_BYTES", 6)
+    fake_request.return_value = _response(chunks=[b"abc", b"def"])
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/", "raw": True}, secret))
+    assert base64.b64decode(out["body_b64"]) == b"abcdef"
 
 
 @pytest.mark.parametrize("host, endpoint, url", [

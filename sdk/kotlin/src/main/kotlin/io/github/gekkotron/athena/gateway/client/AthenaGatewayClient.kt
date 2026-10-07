@@ -80,6 +80,33 @@ public class AthenaGatewayClient internal constructor(
     }
 
     /**
+     * Downloads [url] through the gateway as exact bytes (needs gateway v1.3+), e.g. a camera
+     * snapshot or clip. The gateway caps the size (`HTTP_MAX_RESPONSE_BYTES`, 25 MiB by default)
+     * and fails the call with a [GatewayException.GatewayError] when it is exceeded.
+     *
+     * @param url the destination the gateway should fetch (always with GET).
+     * @param headers extra headers to forward.
+     * @param timeoutSeconds how long the gateway should wait on the upstream call; the client's own
+     *   read timeout for this call is raised to accommodate it.
+     * @param throwOnUpstreamError when false, non-2xx upstream answers are returned instead of thrown.
+     * @throws GatewayException ([GatewayException.Upstream] for non-2xx when [throwOnUpstreamError];
+     *   [GatewayException.GatewayError] when the gateway predates v1.3 or the file is too large).
+     */
+    public suspend fun download(
+        url: String,
+        headers: Map<String, String> = emptyMap(),
+        timeoutSeconds: Int? = null,
+        throwOnUpstreamError: Boolean = true,
+    ): GatewayDownload {
+        val raw = transport.post(
+            "gateway",
+            requests.download(url, headers, timeoutSeconds),
+            readTimeoutSeconds = (timeoutSeconds ?: 30) + 15,
+        )
+        return withContext(decodeDispatcher) { decoder.download(raw, throwOnUpstreamError) }
+    }
+
+    /**
      * Publishes [message] to [topic].
      *
      * @param topic the MQTT topic to publish to.

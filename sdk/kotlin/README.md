@@ -4,7 +4,7 @@ Kotlin/JVM client for the [Athena HTTP/MQTT gateway](../../README.md): forward H
 requests, publish to MQTT and stream MQTT topics live, end-to-end encrypted.
 Works in any Android app (no Android framework dependency) and on the JVM.
 
-Requires a gateway at **v1.1 or later**; `Message.raw` and `BrokerRefused` need **v1.2**.
+Requires a gateway at **v1.1 or later**; `Message.raw` and `BrokerRefused` need **v1.2**; `download()` needs **v1.3**.
 
 ## Install
 
@@ -16,7 +16,7 @@ dependencyResolutionManagement {
 
 // build.gradle.kts
 dependencies {
-    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.2")
+    implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.3")
 }
 ```
 
@@ -31,6 +31,10 @@ val gateway = AthenaGatewayClient(
 // Forward an HTTP request to a device on your LAN
 val state = gateway.http("http://192.168.1.50/api/state")
 println(state.body)
+
+// Download a file (snapshot, clip) as exact bytes; needs gateway v1.3+
+val snapshot = gateway.download("http://192.168.1.20:5000/api/events/abc/snapshot.jpg")
+println("${snapshot.contentType}: ${snapshot.bytes.size} bytes")
 
 // Publish to MQTT
 gateway.publish("home/light/set", "on", qos = 1)
@@ -111,7 +115,7 @@ The client keeps your timeouts for `http`/`publish`; streams use a 45 s read tim
 If you add more Athena artifacts later, the BOM keeps them on one version:
 
 ```kotlin
-implementation(platform("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-bom:v1.2"))
+implementation(platform("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-bom:v1.3"))
 implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client")
 ```
 

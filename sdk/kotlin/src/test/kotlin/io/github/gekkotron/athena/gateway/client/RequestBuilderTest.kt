@@ -43,6 +43,21 @@ class RequestBuilderTest {
         assertFailsWith<IllegalArgumentException> { builder.http("http://h", "POST", emptyMap(), JsonPrimitive(1), null) }
     }
 
+    @Test fun `download payload is a GET with raw true`() {
+        assertEquals(
+            buildJsonObject {
+                put("url", "http://10.0.0.1/s.jpg"); put("method", "GET")
+                putJsonObject("headers") { put("X-A", "1") }
+                put("timeout", 5); put("raw", true); put("timestamp", 1_700_000_000)
+            },
+            opened(builder.download("http://10.0.0.1/s.jpg", mapOf("X-A" to "1"), 5)),
+        )
+        assertEquals(
+            buildJsonObject { put("url", "http://h"); put("method", "GET"); put("raw", true); put("timestamp", 1_700_000_000) },
+            opened(builder.download("http://h", emptyMap(), null)),
+        )
+    }
+
     @Test fun `publish payload with broker overrides`() {
         assertEquals(
             buildJsonObject {

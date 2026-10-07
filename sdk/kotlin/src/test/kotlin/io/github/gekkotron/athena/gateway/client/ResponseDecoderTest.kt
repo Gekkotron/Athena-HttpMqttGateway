@@ -87,6 +87,43 @@ class ResponseDecoderTest {
         assertEquals("boom", assertFailsWith<GatewayException.GatewayError> { decoder.http(crashed, false) }.reason)
     }
 
+    private fun download(status: Int, bytes: ByteArray?, contentType: String? = null): RawResponse =
+        RawResponse(200, "application/octet-stream", sealed {
+            put("status", status); put("body", JsonNull); put("timestamp", 0)
+            if (bytes != null) put("body_b64", bytes.toByteString().base64())
+            if (contentType != null) put("content_type", contentType)
+        })
+
+    @Test fun `download decodes exact non-UTF-8 bytes and content type`() {
+        val jpeg = byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0xFF.toByte(), 0xE0.toByte())
+        assertEquals(GatewayDownload(200, jpeg, "image/jpeg"), decoder.download(download(200, jpeg, "image/jpeg"), true))
+        assertEquals(GatewayDownload(200, ByteArray(0), null), decoder.download(download(200, ByteArray(0)), true))
+    }
+
+    @Test fun `download upstream failure throws or is returned`() {
+        val e = assertFailsWith<GatewayException.Upstream> { decoder.download(download(404, "nope".toByteArray()), true) }
+        assertEquals(404, e.status)
+        assertEquals(404, decoder.download(download(404, "nope".toByteArray()), false).status)
+    }
+
+    @Test fun `download from a gateway older than v1_3 is a clear error`() {
+        val e = assertFailsWith<GatewayException.GatewayError> { decoder.download(envelope(200, JsonPrimitive("text")), true) }
+        assertEquals("gateway does not support raw downloads (needs v1.3+)", e.reason)
+    }
+
+    @Test fun `download too large surfaces as a gateway error`() {
+        val raw = envelope(500, JsonPrimitive("""{"error": "response too large"}"""), source = "gateway")
+        assertEquals("response too large", assertFailsWith<GatewayException.GatewayError> { decoder.download(raw, true) }.reason)
+    }
+
+    @Test fun `GatewayDownload equality is by content and toString hides bytes`() {
+        val a = GatewayDownload(200, byteArrayOf(1, 2), "x")
+        assertEquals(a, GatewayDownload(200, byteArrayOf(1, 2), "x"))
+        assertEquals(a.hashCode(), GatewayDownload(200, byteArrayOf(1, 2), "x").hashCode())
+        assertFalse(a == GatewayDownload(200, byteArrayOf(1, 3), "x"))
+        assertEquals("GatewayDownload(status=200, bytes=2 bytes, contentType=x)", a.toString())
+    }
+
     @Test fun `publish success and broker failure`() {
         val ok = envelope(200, JsonPrimitive("""{"success": true, "topic": "t", "message": "Published successfully"}"""))
         assertEquals(PublishResult("t"), decoder.publish(ok))

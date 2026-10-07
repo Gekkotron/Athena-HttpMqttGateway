@@ -13,14 +13,26 @@ internal class RequestBuilder(private val crypto: WireCrypto, private val clock:
         require(body == null || body is JsonObject || (body is JsonPrimitive && body.isString)) {
             "body must be a JsonObject or a JSON string"
         }
-        return seal(buildMap {
-            put("url", JsonPrimitive(url))
-            put("method", JsonPrimitive(method.uppercase()))
-            if (headers.isNotEmpty()) put("headers", JsonObject(headers.mapValues { JsonPrimitive(it.value) }))
-            if (body != null) put("body", body)
-            if (timeoutSeconds != null) put("timeout", JsonPrimitive(timeoutSeconds))
-        })
+        return seal(httpFields(url, method, headers, body, timeoutSeconds))
     }
+
+    private fun httpFields(
+        url: String,
+        method: String,
+        headers: Map<String, String>,
+        body: JsonElement?,
+        timeoutSeconds: Int?,
+    ): Map<String, JsonElement> = buildMap {
+        put("url", JsonPrimitive(url))
+        put("method", JsonPrimitive(method.uppercase()))
+        if (headers.isNotEmpty()) put("headers", JsonObject(headers.mapValues { JsonPrimitive(it.value) }))
+        if (body != null) put("body", body)
+        if (timeoutSeconds != null) put("timeout", JsonPrimitive(timeoutSeconds))
+    }
+
+    /** A GET with `"raw": true`: the gateway answers with the exact bytes in `body_b64`. */
+    fun download(url: String, headers: Map<String, String>, timeoutSeconds: Int?): String =
+        seal(httpFields(url, "GET", headers, null, timeoutSeconds) + ("raw" to JsonPrimitive(true)))
 
     fun publish(topic: String, message: String, qos: Int, retain: Boolean, broker: Broker?): String {
         requireQos(qos)

@@ -224,6 +224,7 @@ cp .env.example .env
 | `PORT` | `10000` | Server port |
 | `MQTT_BROKER_HOST` | `192.168.1.91` | Default MQTT broker hostname |
 | `MQTT_BROKER_PORT` | `1883` | Default MQTT broker port |
+| `HTTP_MAX_RESPONSE_BYTES` | `26214400` (25 MiB) | Size cap for `/gateway` responses in raw mode (`"raw": true`) |
 
 ### Docker Volumes
 
@@ -397,7 +398,15 @@ The SSE stream will receive encrypted messages with the following types:
 Use the official client library, [`athena-gateway-client`](sdk/kotlin/README.md):
 
 ```kotlin
-implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.2")
+implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.3")
+```
+
+Fetch binary files (camera snapshots, clips) with `download()` (needs gateway v1.3+):
+
+```kotlin
+val snapshot = gateway.download("http://192.168.1.20:5000/api/events/<id>/snapshot.jpg")
+snapshot.bytes        // exact bytes
+snapshot.contentType  // e.g. "image/jpeg"
 ```
 
 Store the secret key outside source control — e.g. in `EncryptedSharedPreferences` / the Android Keystore — and see the SDK README for certificate pinning.
@@ -788,7 +797,17 @@ Gateway endpoint for encrypted HTTP requests to any API.
 - `body`: Request body (dict for JSON or string for raw data)
 - `headers`: (Optional) HTTP headers dict, defaults to `{"Content-Type": "application/json"}`
 - `timeout`: (Optional) Request timeout in seconds, defaults to 30
+- `raw`: (Optional, v1.3+) `true` to get the upstream body as exact bytes, e.g. a JPEG snapshot or MP4 clip (see below)
 - `timestamp`: Current Unix timestamp (required for replay protection)
+
+**Raw responses (`"raw": true`):**
+By default `body` is the upstream JSON or text, which corrupts binary content. With `raw` the gateway streams the upstream body and answers:
+
+```json
+{"status": 200, "body": null, "body_b64": "<base64 of the exact bytes>", "content_type": "image/jpeg", "timestamp": 1234567890}
+```
+
+`content_type` is the upstream `Content-Type` header, or `null`. The body is capped at `HTTP_MAX_RESPONSE_BYTES` (25 MiB by default); when the upstream `Content-Length` or the bytes read exceed it, the gateway answers an encrypted `500` error with `response too large`. Without `raw` the behaviour is unchanged.
 
 **Usage:**
 This endpoint acts as a generic encrypted HTTP proxy. You can forward any HTTP request through it with end-to-end encryption. The gateway will decrypt your request, forward it to the target URL, and return the encrypted response.
@@ -841,7 +860,7 @@ This endpoint establishes a persistent HTTP connection and streams MQTT messages
 
 Health check endpoint.
 
-- **Response**: `{"status": "ok", "version": "1.0.0"}`
+- **Response**: `{"status": "ok", "version": "1.3.0"}`
 
 ## Dependencies
 

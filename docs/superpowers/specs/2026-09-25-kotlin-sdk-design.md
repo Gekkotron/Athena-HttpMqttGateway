@@ -245,3 +245,12 @@ Central publishing.
 - SDK: `GatewayException.BrokerRefused(code, reason)` for MQTT codes 4/5, never retried.
 - SDK: an undecryptable SSE frame is a retryable `GatewayError`, so `reconnect` recovers.
 
+## 11. v1.3 additions (2026-10-07)
+
+- Server: `/gateway` accepts `"raw": true`; the upstream body is streamed (capped by
+  `HTTP_MAX_RESPONSE_BYTES`, 25 MiB default) and returned as `"body": null`, `"body_b64"` (exact
+  bytes) and `"content_type"`. Over the cap the call fails with an encrypted 500 `response too large`.
+  Without `raw` nothing changes. `/health` reports `1.3.0`.
+- SDK: `download(url, headers, timeoutSeconds, throwOnUpstreamError): GatewayDownload(status, bytes,
+  contentType)` sends a GET with `raw: true`. A reply without `body_b64` (gateway older than v1.3)
+  is a `GatewayError`; a too-large file surfaces as the gateway's `GatewayError("response too large")`.
