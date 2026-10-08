@@ -32,7 +32,9 @@ class GatewayIntegrationTest {
     }
 
     @Test fun `http round trip through the real gateway`() = runBlocking {
-        assertEquals(GatewayResponse(200, buildJsonObject { put("ok", true) }), full.http(env("ECHO_URL")))
+        val res = full.http(env("ECHO_URL"))
+        assertEquals(200, res.status)
+        assertEquals(buildJsonObject { put("ok", true) }, res.body)
     }
 
     @Test fun `publish is received by a concurrent multi-topic subscribe`() = runBlocking {
