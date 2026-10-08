@@ -329,7 +329,7 @@ def test_gateway_errors_are_tagged(client, full, path, payload):
 
 def test_upstream_response_is_not_tagged(client, full, now, monkeypatch):
     from server.services import http_service
-    resp = mock.Mock(status_code=403, text="denied")
+    resp = mock.Mock(status_code=403, text="denied", headers={})
     resp.json.side_effect = ValueError
     monkeypatch.setattr(http_service.requests, "request", mock.Mock(return_value=resp))
     r = client.post("/gateway", data=full.encrypt({"url": "http://10.0.0.1/", "timestamp": now}))
@@ -338,4 +338,4 @@ def test_upstream_response_is_not_tagged(client, full, now, monkeypatch):
 
 
 def test_health_reports_version(client):
-    assert client.get("/health").get_json()["version"] == "1.3.0"
+    assert client.get("/health").get_json()["version"] == "1.4.0"

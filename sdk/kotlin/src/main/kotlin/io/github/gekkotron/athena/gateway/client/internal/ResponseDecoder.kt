@@ -35,7 +35,7 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
     fun http(raw: RawResponse, throwOnUpstreamError: Boolean): GatewayResponse {
         val env = envelope(raw)
         if (env.status !in 200..299 && throwOnUpstreamError) throw GatewayException.Upstream(env.status, env.body)
-        return GatewayResponse(env.status, env.body)
+        return GatewayResponse(env.status, env.body, headersOf(env.fields))
     }
 
     fun download(raw: RawResponse, throwOnUpstreamError: Boolean): GatewayDownload {
@@ -127,6 +127,12 @@ internal class ResponseDecoder(private val crypto: WireCrypto) {
 }
 
 private fun JsonObject?.string(key: String): String? = (this?.get(key) as? JsonPrimitive)?.contentOrNull
+
+/** v1.4 `headers`: string values only; absent (older gateway) means empty. */
+private fun headersOf(fields: JsonObject): Map<String, String> =
+    (fields["headers"] as? JsonObject)?.mapNotNull { (k, v) ->
+        (v as? JsonPrimitive)?.takeIf { it.isString }?.content?.let { k.lowercase() to it }
+    }?.toMap().orEmpty()
 
 private fun JsonElement?.boolean(): Boolean? = (this as? JsonPrimitive)?.booleanOrNull
 

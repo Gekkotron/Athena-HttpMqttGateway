@@ -11,8 +11,12 @@ import kotlinx.serialization.json.decodeFromJsonElement
 @PublishedApi
 internal val GatewayJson: Json = Json { ignoreUnknownKeys = true }
 
-/** Response of a request forwarded through `/gateway`. */
-public data class GatewayResponse(public val status: Int, public val body: JsonElement) {
+/** Response of a request forwarded through `/gateway`. [headers]: upstream response headers, lower-case names (gateway v1.4+; empty before). */
+public data class GatewayResponse(
+    public val status: Int,
+    public val body: JsonElement,
+    public val headers: Map<String, String> = emptyMap(),
+) {
     /** Decodes [body] into a `@Serializable` type. */
     public inline fun <reified T> bodyAs(json: Json = GatewayJson): T = json.decodeFromJsonElement(body)
 }

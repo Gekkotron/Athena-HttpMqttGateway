@@ -398,7 +398,7 @@ The SSE stream will receive encrypted messages with the following types:
 Use the official client library, [`athena-gateway-client`](sdk/kotlin/README.md):
 
 ```kotlin
-implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.3")
+implementation("com.github.Gekkotron.Athena-HttpMqttGateway:athena-gateway-client:v1.4")
 ```
 
 Fetch binary files (camera snapshots, clips) with `download()` (needs gateway v1.3+):
@@ -798,6 +798,9 @@ Gateway endpoint for encrypted HTTP requests to any API.
 - `headers`: (Optional) HTTP headers dict, defaults to `{"Content-Type": "application/json"}`
 - `timeout`: (Optional) Request timeout in seconds, defaults to 30
 - `raw`: (Optional, v1.3+) `true` to get the upstream body as exact bytes, e.g. a JPEG snapshot or MP4 clip (see below)
+
+**Response headers (v1.4+):** non-raw answers also carry `"headers"`: the upstream response headers with lower-case names; several `Set-Cookie` lines are joined with `\n`. The Kotlin SDK exposes them as `GatewayResponse.headers` (empty from an older gateway).
+
 - `timestamp`: Current Unix timestamp (required for replay protection)
 
 **Raw responses (`"raw": true`):**
@@ -860,7 +863,7 @@ This endpoint establishes a persistent HTTP connection and streams MQTT messages
 
 Health check endpoint.
 
-- **Response**: `{"status": "ok", "version": "1.3.0"}`
+- **Response**: `{"status": "ok", "version": "1.4.0"}`
 
 ## Dependencies
 

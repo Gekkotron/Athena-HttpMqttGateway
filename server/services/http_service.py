@@ -11,6 +11,18 @@ from ..key_manager import Secret
 logger = logging.getLogger(__name__)
 
 
+def _response_headers(resp) -> dict:
+    """Upstream response headers, names lower-cased; every Set-Cookie line kept, joined with \\n."""
+    headers = {str(k).lower(): str(v) for k, v in dict(resp.headers or {}).items()}
+    raw_headers = getattr(getattr(resp, "raw", None), "headers", None)
+    getlist = getattr(raw_headers, "getlist", None)
+    if callable(getlist):
+        cookies = getlist("Set-Cookie")
+        if isinstance(cookies, list) and cookies:  # a bare test Mock returns a Mock, not a list
+            headers["set-cookie"] = "\n".join(str(c) for c in cookies)
+    return headers
+
+
 class HttpService:
     """Handles generic HTTP requests."""
 
@@ -117,6 +129,7 @@ class HttpService:
         response_payload = {
             "status": resp.status_code,
             "body": body,
+            "headers": _response_headers(resp),
             "timestamp": int(time.time())
         }
 

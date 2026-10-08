@@ -68,6 +68,25 @@ class ResponseDecoderTest {
         assertEquals(GatewayResponse(200, array), decoder.http(envelope(200, array), true))
     }
 
+    @Test fun `http answer headers are decoded, and absent headers are empty`() {
+        val withHeaders = RawResponse(200, "application/octet-stream", sealed {
+            put("status", 200); put("body", json); put("timestamp", 0)
+            put("headers", buildJsonObject { put("set-cookie", "frigate_token=jwt; HttpOnly"); put("content-type", "application/json") })
+        })
+        val r = decoder.http(withHeaders, true)
+        assertEquals("frigate_token=jwt; HttpOnly", r.headers["set-cookie"])
+        assertEquals("application/json", r.headers["content-type"])
+        assertEquals(emptyMap(), decoder.http(envelope(200, json), true).headers)
+    }
+
+    @Test fun `non-string header values are skipped`() {
+        val raw = RawResponse(200, "application/octet-stream", sealed {
+            put("status", 200); put("body", json); put("timestamp", 0)
+            put("headers", buildJsonObject { put("x-num", 3); put("x-ok", "y") })
+        })
+        assertEquals(mapOf("x-ok" to "y"), decoder.http(raw, true).headers)
+    }
+
     @Test fun `upstream failure throws or is returned`() {
         val e = assertFailsWith<GatewayException.Upstream> { decoder.http(envelope(404, JsonPrimitive("nope")), true) }
         assertEquals(404, e.status)

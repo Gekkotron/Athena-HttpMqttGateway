@@ -150,6 +150,30 @@ def test_http_non_json_response_returned_as_text(crypto, secret, fake_request):
     out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h"}, secret))
     assert out["status"] == 404 and out["body"] == "nope"
 
+def test_http_returns_response_headers_lower_cased(crypto, secret, fake_request):
+    resp = _response(json_body={}, headers={"Content-Type": "application/json", "X-Thing": "1"})
+    resp.raw = SimpleNamespace(headers=SimpleNamespace(getlist=lambda name: []))
+    fake_request.return_value = resp
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/x"}, secret))
+    assert out["headers"] == {"content-type": "application/json", "x-thing": "1"}
+
+
+def test_http_keeps_every_set_cookie_line(crypto, secret, fake_request):
+    resp = _response(json_body={}, headers={"Set-Cookie": "a=1; Path=/, frigate_token=jwt; HttpOnly"})
+    lines = ["a=1; Path=/", "frigate_token=jwt; HttpOnly"]
+    resp.raw = SimpleNamespace(headers=SimpleNamespace(getlist=lambda name: lines if name == "Set-Cookie" else []))
+    fake_request.return_value = resp
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/api/login"}, secret))
+    assert out["headers"]["set-cookie"] == "a=1; Path=/\nfrigate_token=jwt; HttpOnly"
+
+
+def test_http_headers_without_a_raw_response(crypto, secret, fake_request):
+    resp = _response(json_body={}, headers={"Set-Cookie": "frigate_token=jwt"})
+    resp.raw = None
+    fake_request.return_value = resp
+    out = _open(crypto, HttpService(crypto).handle_request({"url": "http://h/x"}, secret))
+    assert out["headers"] == {"set-cookie": "frigate_token=jwt"}
+
 
 def test_http_missing_target_raises(crypto, secret, fake_request):
     with pytest.raises(ValueError):
